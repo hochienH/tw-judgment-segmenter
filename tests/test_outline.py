@@ -182,3 +182,8 @@ def test_unclean_opening_is_vouched_for_by_its_sibling_two():
                "        １、醫療費用：支出應扣除非醫療必要部分。\n        ２、增加生活上需要部分：可採。\n"
                "        ３、慰撫金部分：以三十萬元為適當。\n")
     assert [(s, o) for _, s, o in tree(doc)[0]] == [("一", 1), ("1.", 1), ("1.", 2), ("1.", 3)]
+
+
+def test_chinese_digit_number_lists_are_not_enumerators():
+    doc = _doc("一、系爭地號：\n㈠甲段三五○、三五六地號。\n  一、五八二、五八二─一地號。\n㈡乙段。\n")
+    assert [(s, o) for _, s, o in tree(doc)[0]] == [("一", 1), ("㈠", 1), ("㈠", 2)]
