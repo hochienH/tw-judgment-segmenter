@@ -168,3 +168,15 @@ def test_rare_colon_and_variant_heading():
 def test_numbered_heading_inside_reasons_is_not_a_section():
     doc = "臺灣臺北地方法院刑事判決\n主　文\n無罪。\n理　由\n一、犯罪事實\n公訴意旨略以……\n中華民國112年1月1日\n"
     assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"]
+
+
+def test_reasons_without_heading_start_at_first_level_enumeration():
+    doc = "臺灣高等法院臺中分院民事判決\n主　文\n上訴駁回。\n壹、程序方面：\n一、按……\n貳、實體方面：\n中華民國95年1月1日\n"
+    r = segment(doc)
+    assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"] and r["status"] == "ok"
+    assert r["sections"][2]["heading"] == "(implicit)"
+
+
+def test_small_claims_judgment_with_only_main_is_main_only():
+    doc = "臺灣新北地方法院小額民事判決\n111年度板小字第1號\n主　文\n被告應給付原告新臺幣1萬元。\n中華民國111年3月1日\n"
+    assert segment(doc)["status"] == "main_only"
