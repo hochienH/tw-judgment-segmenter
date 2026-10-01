@@ -63,7 +63,7 @@ RE_TRANSCRIPT = re.compile(
 RE_NUM_PREFIX = re.compile(r"^[一二三四五六七八九十]+、")
 RE_IMPLICIT_REASONS = re.compile(rf"^{WS}壹{WS}、")
 
-NUMC = r"[0-9０-９一二三四五六七八九十百零〇]"
+NUMC = r"[0-9０-９一二三四五六七八九十百零〇廿卅]"     # 廿 = 20, 卅 = 30 (六月廿一日)
 NUMS = rf"(?:{NUMC}{WS})+"                      # numerals may be spaced: 九　十　年
 DATE = rf"中{WS}華{WS}民{WS}國{WS}{NUMS}年{WS}{NUMS}月{WS}{NUMS}日"
 RE_DATE_LINE = re.compile(rf"^{WS}{DATE}{WS}$")
@@ -89,7 +89,9 @@ RE_INLINE_BODY_FLAT = re.compile(
 NUMLAB = r"[0-9０-９一二三四五六七八九十()（）]*"
 RE_APPENDIX_LAW = re.compile(rf"^{WS}附{WS}錄{WS}[^。，\n]{{0,24}}?(?:法{WS}條|條{WS}文|法{WS}規){WS}[^。，\n]{{0,8}}?[：:︰﹕]?{WS}$|^{WS}附{WS}錄{WS}[：:︰﹕]?{WS}$")
 RE_ATTACH = re.compile(rf"^{WS}(?:附{WS}(?:件|表){WS}{NUMLAB}{WS}(?:[：:︰﹕][^\n]{{0,40}})?|附{WS}(?:記|註){WS}(?:[：:︰﹕][^\n]*)?|計{WS}算{WS}書{WS}[：:︰﹕]?){WS}$")
-RE_CLOSING_ALT = re.compile(rf"^{WS}(?:以{WS}上|本{WS}件)?{WS}正{WS}本{WS}(?:證{WS}明{WS}與{WS}原{WS}本{WS}無{WS}異|係{WS}照{WS}原{WS}本{WS}作{WS}成)")
+RE_CLOSING_ALT = re.compile(rf"^{WS}(?:以{WS}上|本{WS}件|右{WS}(?:為{WS})?)?{WS}正{WS}本{WS}(?:證{WS}明{WS}與{WS}原{WS}本{WS}無{WS}異|係{WS}照{WS}原{WS}本{WS}作{WS}成)")
+# after the closing, a standalone 所犯法條 / 論罪科刑法條 heading is the statute appendix (no 附錄 in front)
+RE_APPENDIX_LAW_AFTER_CLOSING = re.compile(rf"^{WS}(?:本{WS}案{WS})?(?:所{WS}犯{WS}法{WS}條|論{WS}罪{WS}科{WS}刑{WS}法{WS}條){WS}(?:全{WS}文)?{WS}[：:︰﹕]?{WS}$")
 RE_INDICTMENT = re.compile(r"起訴書|聲請簡易判決處刑書|聲請簡易判決處刑|追加起訴|犯罪事實|證據並所犯法條")
 
 RE_TITLE_KIND = re.compile(
@@ -181,7 +183,7 @@ def segment(text: str) -> dict:
     seen_body = False
     closing_done = False
     for start, _, line in _lines(text):
-        if RE_APPENDIX_LAW.match(line):
+        if RE_APPENDIX_LAW.match(line) or (closing_done and RE_APPENDIX_LAW_AFTER_CLOSING.match(line)):
             events.append((start, "APPENDIX_LAW", _squash(line)))
             in_tail = True
             continue
