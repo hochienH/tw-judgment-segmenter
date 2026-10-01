@@ -44,8 +44,8 @@ as `ok`. Accuracy comes from the gold set below.
 - Before the fixes (v5): P = 1.000, R = 0.952. The 10 misses were all in 4 documents: 044/046 (憲法法庭, no line
   breaks at all), 047 (date numerals with spaces: 九　十　年), and 051 (2025 judgment whose line breaks were partly
   replaced by full-width spaces, so headings and the date sit mid-line).
-- After the fixes (v7): P = 0.995, R = 1.000. The single remaining FP is 048 CLOSING. The annotator did not
-  add ⟪CLOSING⟫ there, because v4 had not pre-labelled it. Asked the user whether to add it.
+- After the fixes (v7): P = R = 1.000. The last FP (048 CLOSING) was an annotation omission, fixed by the user on 2026-10-01. The annotator had not
+  added ⟪CLOSING⟫ there, because v4 had not pre-labelled it.
 - Caveat: this set was used to write the fixes, so it is now development data, not a test set. A fresh
   held-out set is needed for an honest accuracy number. Pre-labels also anchor the annotator (see 048).
 - Fixes: inline repair pass, which runs only when the line pass misses MAIN/BODY/CLOSING. Inline headings must
