@@ -144,3 +144,17 @@ def test_title_followed_by_case_number():
 def test_closing_falls_back_to_certified_copy_line():
     r = segment(NO_DATE_ORDER)
     assert labels(NO_DATE_ORDER) == ["HEADER", "MAIN", "REASONS", "CLOSING"] and r["status"] == "ok"
+
+
+ONE_PARAGRAPH_ORDER = """臺灣臺北地方法院民事裁定
+112年度北補字第2052號
+原　　告　甲
+上列當事人間請求確認本票債權不存在事件，原告起訴未繳納裁判費……特此裁定。
+中　華　民　國　112　年　10　月　30　日
+　　　　　　臺北簡易庭　法　官　某
+"""
+
+
+def test_one_paragraph_order_is_unstructured_with_closing():
+    r = segment(ONE_PARAGRAPH_ORDER)
+    assert r["status"] == "unstructured" and labels(ONE_PARAGRAPH_ORDER) == ["HEADER", "CLOSING"]
