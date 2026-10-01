@@ -31,6 +31,12 @@ OUTLINE_FEATURES = ("amount_guard", "numlist_guard", "chained", "digit_stop", "p
                     "relaxed_indent", "skip", "duplicate", "restart_guard", "clean_open", "short_line",
                     "lookahead", "heading_reset", "chained_indent")
 _ENUM_FLAGS = frozenset({"amount_guard", "numlist_guard", "chained", "digit_stop"})
+# Default since 2026-10-02 (ablation): drop 8 rules with little or ambiguous value. clean_open/short_line/lookahead
+# changed 1% of docs with no effect on gold. Cost vs full: 1.6% of docs differ; gold docs exact 145/150.
+# Pass off=FULL for the full rule set.
+FULL = frozenset()
+SIMPLIFIED_OFF = frozenset({"clean_open", "short_line", "lookahead", "numlist_guard", "sum_guard", "restart_guard",
+                            "heading_reset", "chained_indent"})
 
 
 @lru_cache(None)
@@ -194,9 +200,10 @@ class Level:
     indent: int | None     # None: opened by a chained enumerator (六㈠); the first sibling sets it
 
 
-def outline(text: str, sections: list[dict], off: frozenset = frozenset()) -> dict:
+def outline(text: str, sections: list[dict], off: frozenset | None = None) -> dict:
     """Outline nodes for every body section, plus rejected enumerator-like lines.
-    `off`: names from OUTLINE_FEATURES to switch off (ablation only)."""
+    `off`: names from OUTLINE_FEATURES to switch off; None = SIMPLIFIED_OFF (default), FULL = every rule."""
+    off = SIMPLIFIED_OFF if off is None else off
     nodes: list[Node] = []
     rejected: list[dict] = []
     for sec in sections:
