@@ -141,7 +141,11 @@ def export(args) -> None:
     segs = load_jsonl(args.segments)
     texts = load_jsonl(args.input, keep=set(segs))
     if args.sample == "heldout":
-        picked = sample_heldout(segs, texts, args.n, args.recent_share, args.seed)
+        excluded = set()
+        for m in args.exclude_manifest or []:           # documents already used in earlier gold sets
+            excluded |= {l.split("\t")[1] for l in open(m).read().splitlines()[1:]}
+        pool = {i: s for i, s in segs.items() if i not in excluded}
+        picked = sample_heldout(pool, texts, args.n, args.recent_share, args.seed)
         return _write(args, picked, segs, texts, GUIDE + HELDOUT_NOTE)
     groups = defaultdict(list)
     for i, s in segs.items():
@@ -217,6 +221,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--sample", choices=["status", "heldout"], default="status")
     ap.add_argument("--recent-share", type=float, default=0.5)
+    ap.add_argument("--exclude-manifest", type=Path, nargs="*", help="manifest.tsv of earlier gold sets")
     args = ap.parse_args()
     export(args) if args.cmd == "export" else score(args)
 
