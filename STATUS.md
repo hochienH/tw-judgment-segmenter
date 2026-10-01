@@ -98,6 +98,28 @@ as `ok`. Accuracy comes from the gold set below.
 Score with `python scripts/annotation.py score --input <texts.jsonl> --segments <segments.jsonl> --out <dir>`.
 The round trip on unedited files gives P = R = 1.0.
 
+## Layer 2, step 1: enumeration outline (`segmenter/outline.py`, 2026-10-01)
+
+- Decision: the functional labels for layer 2 (原告主張, 論罪, 科刑 …) are postponed until masking is done. Only
+  the numbering hierarchy is built now.
+- Survey (public, body sections of ok docs): 一 87% of docs, ㈠ 31%, 壹 7.5%, 1. 5%, ⑴ 5%, 甲 3.5%. Patterns:
+  一 only 54%, 一>㈠ 18%, no enumerator 11.5%. The rank 甲>壹>一>㈠>1./⑴>① fits about 90%, but levels are
+  document-specific, so nesting follows the order of first appearance.
+- Text after the top-level enumerators is mostly a sentence opening (依刑事訴訟法…, 核被告所為…, 據上論斷…),
+  not a heading. Explicit headings (程序方面, 實體方面, 原告方面, 本院之判斷) sit mostly at the 壹/甲 levels. For the
+  later functional step: classify by opening phrases, not by headings alone.
+- Algorithm: each level keeps (style, last ordinal, indentation). A line continues a level when its ordinal is
+  the next one and its indentation is within ±1 (full-width space = 2). A restart at 1 in a style already in use
+  becomes a nested child list (nested_restart, e.g. quoted statute items). One skipped number is tolerated at the
+  same indentation after a finished sentence. Anything else is rejected as text.
+- Key evidence: depth-0 items are at column 0 in 30,552 of 30,639 cases. Continuation lines are indented 4. Deeper
+  levels have no fixed indentation.
+- Public results: v1 (ordinals only) rejected 45 per 1,000 nodes; v2 (indentation-aware) rejects 14.6 per 1,000,
+  with 6.4% of docs having any rejection. nested_restart covers 1.0% of nodes and skipped 98 nodes. Rejected
+  samples are mostly correct rejections (amounts 一一九、０００元, wrapped ㈣第55頁, cross references 丙、肆、四、㈠, 釋字
+  numbers), plus a few court numbering errors (三 written twice).
+- No gold for the outline yet.
+
 ## Open
 
 - Convention (2026-10-01, from held-out file 004): layer 1 marks top-level headings only. Sub-headings inside 理由
