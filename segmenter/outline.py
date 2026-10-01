@@ -178,20 +178,27 @@ def outline(text: str, sections: list[dict]) -> dict:
             continue
         stack: list[Level] = []
         pos, prev_last = sec["start"], "。"            # a section start counts as a sentence boundary
+        prev_was_item = False
         for raw in text[sec["start"]:sec["end"]].splitlines(keepends=True):
             line, start = raw.rstrip("\r\n"), pos
             pos += len(raw)
             hits = match_enum(line)
             stripped = line.rstrip(" 　")
             if not hits and RE_HEADING_LINE.match(line):
-                stack, prev_last = [], "。"             # a second 理由/事實 heading restarts the outline
+                stack, prev_last, prev_was_item = [], "。", True   # a second 理由/事實 heading restarts the outline
                 continue
             if not hits:
                 prev_last = stripped[-1:] or prev_last
+                prev_was_item = False if stripped.strip(" 　") else prev_was_item
                 continue
             ind = indent_of(line)
             for j, (style, n) in enumerate(hits):
-                after_sentence = j > 0 or prev_last in SENTENCE_END   # a chained 2nd enumerator opens cleanly
+                # after_sentence: the previous line finished a sentence (or this is the chained 2nd enumerator of 六㈠).
+                # It gates skip/duplicate tolerance and relaxed indentation.
+                after_sentence = j > 0 or prev_last in SENTENCE_END
+                # clean_open: may also open a new list right under an item line (an untitled heading such as
+                # 二、新舊法比較). A wrapped line after "…如附表" is neither.
+                clean_open = after_sentence or prev_was_item
                 nested = skipped = duplicate = False
                 # 1. continue an existing level of this style (innermost first) whose indentation matches
                 # (±1 column normally; up to 4 when the previous line finished a sentence, because courts
@@ -212,7 +219,7 @@ def outline(text: str, sections: list[dict]) -> dict:
                             break
                 if k is not None:
                     stack = stack[:k]
-                elif n == 1 or (not stack and after_sentence):
+                elif clean_open and (n == 1 or not stack):
                     # 3. a new list: a fresh style, or a restart of a style in use (quoted items) -> nested child.
                     #    A restart must follow a finished sentence; a wrapped cross reference does not.
                     nested = any(lv.style == style for lv in stack)
@@ -221,7 +228,8 @@ def outline(text: str, sections: list[dict]) -> dict:
                                          "reason": "restart inside a sentence", "line": line.strip()[:30]})
                         break
                 else:
-                    expected = [lv.last + 1 for lv in stack if lv.style == style]
+                    expected = [lv.last + 1 for lv in stack if lv.style == style] or (
+                        ["clean opening"] if n == 1 else [])
                     rejected.append({"start": start, "style": style, "ordinal": n, "indent": ind,
                                      "reason": f"expected {expected[-1]}" if expected else "new level not starting at 1",
                                      "line": line.strip()[:30]})
@@ -232,6 +240,7 @@ def outline(text: str, sections: list[dict]) -> dict:
                 nodes.append(node)
                 stack.append(Level(style, n, node.id, None if j > 0 else ind))
             prev_last = stripped[-1:] or prev_last
+            prev_was_item = any(nd.start == start for nd in nodes[-len(hits):]) if nodes else False
         # close each node at the next node of the same or shallower depth within this section
         sec_nodes = [nd for nd in nodes if nd.section == sec["label"] and sec["start"] <= nd.start < sec["end"]]
         for i, nd in enumerate(sec_nodes):
