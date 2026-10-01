@@ -120,6 +120,34 @@ The round trip on unedited files gives P = R = 1.0.
   numbers), plus a few court numbering errors (三 written twice).
 - No gold for the outline yet.
 
+### Outline gold v1 (2026-10-01): 50 docs, stratified by max depth (0:5, 1:20, 2:15, ≥3:10)
+
+- Population strata sizes (ok docs in 200k): 0: 17,855 / 1: 88,108 / 2: 33,167 / ≥3: 20,488.
+- Review: 5 Opus agents (10 docs each). 132 findings in 8 docs, all accepted by the user. Later, 19 more
+  gold corrections were approved by the user: invisible PUA enumerators that both the agents and the
+  annotator missed (040: seven items 一–六、 written as U+F6B0…F6AB plus the depth shift beneath them;
+  005 L2691 = (十一)).
+- **Official score, v2 rules vs corrected gold: item P = 0.997, R = 0.864, depth accuracy 0.933; 42/50 docs
+  exact (1-level docs 20/20; 2-level 11/15; ≥3-level 6/10). Population-weighted docs exact ≈ 89%.**
+  (`annotation/outline-v1-score-v2-corrected.json`)
+- Root causes found (all fixed in v3b):
+  1. ⒈–⒛ glyphs (U+2488–249B) were missing from the "1." style, the biggest cause. A whole level vanished,
+     so children were shifted up. Courts also mix 1.–9. with ⒑ ⒒ in one list.
+  2. Chained enumerators without 、: 六㈠…. The missing 六 cascaded into 七–十.
+  3. Numbers repeated by the court (三、 twice, ㈥ twice) are now accepted as a sibling at the same
+     indentation after a finished sentence (flag `duplicate`).
+  4. Big5 custom glyphs (PUA). The mapping was inferred from consecutive runs after a style's last Unicode glyph
+     (㈩, ⑳) in 200k docs: F6B0–F6A2 = 一、…十五、 (、 built in; F6B0 follows headings as the first item),
+     F674–F65B = (十一)…(三十六), F4DA–F4D7 = (21)…(24), E7CB = 十一、. Codes descend as ordinals rise.
+     Unclear: F511–F513 (possibly 壹/貳/參), E01D (an indentation glyph before ⑴). See
+     `runs/pua_unmapped_linestart.tsv`.
+  5. A restart of a style in use must follow a finished sentence, which rejects wrapped cross-references.
+     The level opened by a chained child takes its indentation from its first sibling.
+- Dev score with v3b: P = 0.9986, R = 1.0, depth 1.0. The one FP is ① inside a verbatim quoted meeting record
+  (005), which the rules cannot detect yet.
+- Lesson: PUA glyphs are invisible, so annotators and agents cannot see them. Both exporters now insert a
+  visible hint ⟦U+XXXX⟧ before a line-initial PUA char, and the scorers strip it.
+
 ## Open
 
 - Convention (2026-10-01, from held-out file 004): layer 1 marks top-level headings only. Sub-headings inside 理由

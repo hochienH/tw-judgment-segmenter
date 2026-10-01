@@ -27,3 +27,10 @@ def test_note_lines_are_ignored():
 def test_marker_line_saved_with_crlf_by_editor():
     back, bounds = strip_markers("⟪HEADER⟫\r\n標題\r\n⟪MAIN⟫\r\n主　文\r\n")
     assert back == "標題\r\n主　文\r\n" and bounds == [(0, "HEADER"), (4, "MAIN")]
+
+
+def test_pua_hint_roundtrip():
+    text = "標題\r\n原告主張：\r\n"
+    exported = with_markers(text, [{"label": "HEADER", "start": 0}])
+    assert "⟦U+F6B0⟧" in exported
+    assert strip_markers(exported)[0] == text
