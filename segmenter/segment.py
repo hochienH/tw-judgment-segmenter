@@ -13,6 +13,9 @@ Output sections, with character offsets into the ORIGINAL text (the text itself 
   ATTACHMENT     附件 / 附表 / 附記 / 附註 / 計算書; an attached indictment (起訴書, 聲請簡易判決處刑書)
                  is flagged with kind="indictment"
 
+Status: ok (主文 + body + closing), main_only (主文 + closing, e.g. 更正裁定), unstructured (no headings,
+closing found: one-paragraph procedural orders), formulaic (支付命令), partial (anything else = failures).
+
 Headings are detected only on standalone lines (spaces inside allowed, an optional colon, no 。),
 because fixed-width line wrapping produces lines such as "主文。" or "附件檢察官聲請簡易判決處刑"
 that start or end with heading words but are ordinary text.
@@ -155,6 +158,15 @@ def segment(text: str) -> dict:
     if not closing_done and alt_closing is not None:
         events.append(alt_closing)
         events.sort(key=lambda e: e[0])
+        closing_done = True
+    if not seen_body and not closing_done:
+        # one-paragraph orders (命補正, 命補繳裁判費 ... 特此裁定) have no headings at all:
+        # still cut the closing at the first date line
+        for start, _, line in _lines(text):
+            if start > 0 and RE_DATE_LINE.match(line) and not any(o <= start for o, l, _ in events if l in TAIL_LABELS):
+                events.append((start, "CLOSING", _squash(line)))
+                events.sort(key=lambda e: e[0])
+                break
     sections: list[Section] = []
     first = next((e[0] for e in events if e[1] != "SUB"), len(text))
     if first > 0:
@@ -186,6 +198,10 @@ def segment(text: str) -> dict:
         status = "formulaic"
     elif not missing and order_ok:
         status = "ok"
+    elif missing == ["BODY"] and order_ok:
+        status = "main_only"                       # e.g. 更正裁定: 主文 and closing, no reasons by design
+    elif missing == ["MAIN", "BODY"]:
+        status = "unstructured"                    # no headings at all, closing found
     else:
         status = "partial"
     return {"doc_kind": kind, "status": status, "missing": missing, "order_ok": order_ok,
