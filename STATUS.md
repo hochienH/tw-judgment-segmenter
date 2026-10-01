@@ -18,7 +18,7 @@ indictment gets kind=indictment).
 
 Status classes:
 - `ok`: 主文 + body + closing.
-- `main_only`: 主文 + closing, e.g. 更正裁定.
+- `main_only`: 主文 + closing. Legitimate for 小額判決 (民訴 436-18) and 更正裁定.
 - `unstructured`: no headings, closing found, e.g. one-paragraph 命補繳裁判費 orders.
 - `formulaic`: 支付命令.
 - `partial`: everything else, i.e. failures.
@@ -47,8 +47,10 @@ The round trip on unedited files gives P = R = 1.0.
 
 ## Open
 
-- 判決 `main_only` 4.7% is suspicious, because judgments must state reasons. Likely body headings written
-  inline or missing; check against the gold set.
+- ~~判決 `main_only` 4.7% suspicious~~ Resolved on 2026-10-01 (the user's hypothesis): 187 of 190 (98%) are
+  小額判決. 民訴 436-18 lets the judgment record only 主文, so `main_only` is correct for them. The other 3 had
+  reasons with no heading, starting with 壹、程序方面. They are now handled by an implicit-REASONS rule:
+  right after MAIN, before any body heading, a line starting with 壹、 opens REASONS with heading "(implicit)".
 - Appendix placed BEFORE the closing date line: the closing is then not detected (part of `partial`, 93 docs).
 - Run on the 200k training sample to check that rates hold outside the public set.
 
