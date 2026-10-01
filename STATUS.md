@@ -72,6 +72,25 @@ as `ok`. Accuracy comes from the gold set below.
 - Lesson: pre-labels anchor the annotator. Both v2 errors were pre-label errors that the annotator accepted.
   An independent second reader (agents) caught them.
 
+## Held-out v3: second official layer-1 accuracy (2026-10-01)
+
+- 50 docs, disjoint from v2, same sampling, pre-labelled by v8. 5 Opus agents reviewed them FIRST (user's
+  choice); the user decided on the 4 flagged points. No full human pass, so gold quality rests on agent recall.
+- Convention (a), decided by the user: any statute text appended after the judgment is APPENDIX_LAW, whether
+  criminal 論罪科刑法條 or civil/administrative notice statutes (民訴 466-1, 行訴 235 ...). It covers 【附註】/附記
+  that quote articles. If the two ever need to be told apart, add a `kind` attribute (sentencing vs notice)
+  rather than a new label. Boundaries do not change.
+- **Score with v8, BEFORE fixes: P = 1.000 (208/208), R = 0.9905 (208/210); 2/50 docs with an error.** Both misses
+  were APPENDIX_LAW: a heading with the statute on the same line (042) and 【附註】 (011).
+  (`annotation/layer1-v3-heldout-score-v8.json`)
+- Across v2 (v7 rules) and v3 (v8 rules), 4 of 80 held-out docs had an error. All 4 were in the tail (closing
+  date / appendix), none in HEADER/MAIN/body.
+- Fixes (v9c): appendix heading inline with content; bracketed headings (【附註】 〔附錄〕); 附註/附記/附錄 whose
+  text has a quoted-article heading line (the article reference ends the line, apart from 項/款, a paren note and a
+  colon) are relabelled APPENDIX_LAW. Two over-eager versions were caught by spot checks (instruction notes
+  mentioning a law) before the final rule. v1/v2/v3 all score P = R = 1.0 with v9c. 200k: 4,651 docs changed,
+  3,421 relabelled; a spot check of 10 was all correct.
+
 ## Gold set v1 files
 
 `/nfs/turing/data1/hochien894011/tw-judgment-segmenter/annotation/layer1-v1/`: 51 pre-labelled files
