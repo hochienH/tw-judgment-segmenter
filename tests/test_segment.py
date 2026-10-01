@@ -216,3 +216,26 @@ def test_flat_reasons_without_enumerator_and_date_after_yu_excluded():
     r = segment(doc)
     assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"]
     assert doc[r["sections"][-1]["start"]:].startswith("中 華 民 國111年8月11日")
+
+
+def test_nian_date_and_right_side_certified_copy():
+    doc = ("臺灣臺北地方法院小額民事裁定\n主　　文\n本件應再開言詞辯論。\n"
+           "中　　　華　　　民　　　國　　　　九十一　　年　　　六　　月　　廿一　　日\n"
+           "　　　臺灣臺北地方法院臺北簡易庭　法官　某\n右為正本係照原本作成。\n"
+           "中　　　華　　　民　　　國　　九十一　　年　　　六　　　月　　二十四　　日\n")
+    r = segment(doc)
+    assert labels(doc) == ["HEADER", "MAIN", "CLOSING"]
+    assert doc[r["sections"][-1]["start"]:].lstrip().startswith("中　　　華　　　民　　　國　　　　九十一　　年　　　六　　月　　廿一")
+
+
+def test_statute_appendix_without_fulu_after_closing():
+    doc = ("臺灣臺中地方法院刑事簡易判決\n主　文\n甲犯不能安全駕駛罪。\n事實及理由\n一、……\n"
+           "中　華　民　國　110　年　7　月　13　日\n　刑事第二庭　法　官　某\n以上正本證明與原本無異。\n"
+           "中　華　民　國　110　年　7　月　13　日\n所犯法條：\n刑法第185條之3第1項第1款：\n駕駛動力交通工具……\n")
+    assert labels(doc) == ["HEADER", "MAIN", "FACTS_REASONS", "CLOSING", "APPENDIX_LAW"]
+
+
+def test_so_fan_fa_tiao_inside_body_is_not_appendix():
+    # in an attached indictment or body, 所犯法條 is a body heading, not the appendix
+    doc = "臺灣臺北地方法院刑事簡易判決\n主　文\n甲犯竊盜罪。\n所犯法條\n刑法第320條\n中華民國112年1月1日\n"
+    assert "APPENDIX_LAW" not in labels(doc)
