@@ -160,3 +160,10 @@ def test_wrapped_list_of_annexes_is_not_a_new_list():
 def test_untitled_heading_item_can_open_a_sub_list():
     doc = _doc("一、本件犯罪事實引用起訴書。\n二、新舊法比較\n  ㈠被告行為後法律修正。\n  ㈡比較結果。\n三、論罪。\n")
     assert tree(doc)[0] == [(0, "一", 1), (0, "一", 2), (1, "㈠", 1), (1, "㈠", 2), (0, "一", 3)]
+
+
+def test_first_item_after_long_section_heading():
+    for heading in ("事實及理由要領", "犯 罪 事 實 及 理 由", "事實理由及證據"):
+        doc = ("臺灣臺北地方法院簡易判決\n主　文\n駁回。\n" + heading + "\n一、本件依民事訴訟法第434條。\n"
+               "二、其餘。\n中華民國111年1月1日\n")
+        assert [o for _, _, o in tree(doc)[0]] == [1, 2], heading

@@ -38,7 +38,12 @@ ENUM_PATTERNS = [  # (style, pattern); the first capture group holds the ordinal
 ]
 RE_ENUMS = [(st, re.compile(rf"^[\s　]*(?:{p})")) for st, p in ENUM_PATTERNS]
 BODY_LABELS = ("FACTS", "REASONS", "FACTS_REASONS", "BODY_OTHER")
-RE_HEADING_LINE = re.compile(r"^[\s　]*(?:理[\s　]*由|事[\s　]*實|事[\s　]*實[\s　]*及[\s　]*理[\s　]*由|犯[\s　]*罪[\s　]*事[\s　]*實)[\s　]*[：:]?[\s　]*$")
+from .segment import RE_BODY as _RE_L1_HEADING, RE_TRANSCRIPT as _RE_L1_TRANSCRIPT  # noqa: E402
+
+
+def is_heading_line(line: str) -> bool:
+    """A layer-1 body heading (理由, 事實及理由要領, 犯罪事實及理由, 事實理由及證據 …), incl. the section's own."""
+    return bool(_RE_L1_HEADING.match(line) or _RE_L1_TRANSCRIPT.match(line))
 
 
 def _cn_number(s: str, digits: dict) -> int | None:
@@ -184,7 +189,7 @@ def outline(text: str, sections: list[dict]) -> dict:
             pos += len(raw)
             hits = match_enum(line)
             stripped = line.rstrip(" 　")
-            if not hits and RE_HEADING_LINE.match(line):
+            if not hits and is_heading_line(line):
                 stack, prev_last, prev_was_item = [], "。", True   # a second 理由/事實 heading restarts the outline
                 continue
             if not hits:
