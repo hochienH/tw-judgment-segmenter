@@ -127,7 +127,7 @@ The round trip on unedited files gives P = R = 1.0.
   gold corrections were approved by the user: invisible PUA enumerators that both the agents and the
   annotator missed (040: seven items 一–六、 written as U+F6B0…F6AB plus the depth shift beneath them;
   005 L2691 = (十一)).
-- **Official score, v2 rules vs corrected gold: item P = 0.997, R = 0.864, depth accuracy 0.933; 42/50 docs
+- **Official score, v2 rules vs corrected gold: item P = 0.997, R = 0.862, depth accuracy 0.933; 42/50 docs
   exact (1-level docs 20/20; 2-level 11/15; ≥3-level 6/10). Population-weighted docs exact ≈ 89%.**
   (`annotation/outline-v1-score-v2-corrected.json`)
 - Root causes found (all fixed in v3b):
@@ -143,8 +143,35 @@ The round trip on unedited files gives P = R = 1.0.
      `runs/pua_unmapped_linestart.tsv`.
   5. A restart of a style in use must follow a finished sentence, which rejects wrapped cross-references.
      The level opened by a chained child takes its indentation from its first sibling.
-- Dev score with v3b: P = 0.9986, R = 1.0, depth 1.0. The one FP is ① inside a verbatim quoted meeting record
-  (005), which the rules cannot detect yet.
+- Dev score with v3b: P = 0.9986, R = 1.0, depth 1.0, 49/50 docs exact. The one FP is ① inside a verbatim
+  quoted meeting record (005), which the rules cannot detect yet.
+- Scorer fix: items are counted per offset, because a chained line (六㈠) holds two. The v1 gold was completed
+  for 017 六㈠/七㈠ (⟦1⟧⟦2⟧): the old format could not carry two prefixes on one line. This moved R from 0.864
+  to 0.862.
+### Outline held-out v2 (2026-10-01): 100 docs (0:10, 1:40, 2:30, ≥3:20), disjoint from all earlier gold sets
+
+- Pre-labelled by v3b. A workflow of 10 Opus agents (10 docs each; concurrency is capped, so not all 10 run at
+  once) found 17 points in 6 docs. All were verified against the text and accepted by the user.
+- **Official score, v3b vs gold: item P = 0.9966, R = 0.9944, depth accuracy 0.990; 94/100 docs exact
+  (1-level 39/40, 2-level 27/30, ≥3-level 18/20). Population-weighted docs exact ≈ 95.2%** (v2 rules: ≈ 89%).
+  (`annotation/outline-v2-heldout-score-v3b.json`; strata sizes 0: 16,787 / 1: 88,704 / 2: 30,077 / ≥3: 24,000)
+- Causes, fixed in v3c–v3h:
+  - Sibling indentation is inconsistent (㈠㈢ with two full-width spaces, ㈡ with one; ㈧ at column 0 after
+    indented ㈠–㈦). When the previous line finished a sentence, up to 4 columns are now tolerated.
+  - Amounts: 一、０００、０００元, 八、○○○股, 一、五八二、五八二─一 (Chinese-digit number lists).
+  - Sums: ㈠＋㈡為…
+  - A court that writes 理由 twice: the second standalone heading restarts the outline. All layer-1 heading
+    regexes are reused here. A narrow version had dropped the first item after 事實及理由要領 and similar
+    headings, about 20k nodes, caught by diffing against v3b.
+  - New lists need a clean opening: after a finished sentence (incl. ︰﹕?), right under an item line, or after a
+    short line (≤16 chars: a heading or paragraph end; wrapped lines are full). An unclean opening is still
+    accepted if its sibling 2 follows (same style, similar indent, after a sentence). This stops cascades
+    where one rejected 1 drops 2, 3, 4 ….
+- v3h on 200k: rejected 14.7 per 1,000 nodes (v3b 15.25). v1 and v2 gold are both perfect, but both are now dev
+  data. A diff of v3g against v3b showed about 9/14 removals were correct (wrapped references, case numbers,
+  page and number lists) and 3/6 additions were wrong (later fixed: Chinese-digit number lists; still open:
+  quoted lists in 『』, references like 「見不爭執事項㈠㈢）」).
+- Diminishing returns: each rule fixes some cases and moves others. An honest v3h number needs a fresh held-out.
 - Lesson: PUA glyphs are invisible, so annotators and agents cannot see them. Both exporters now insert a
   visible hint ⟦U+XXXX⟧ before a line-initial PUA char, and the scorers strip it.
 
