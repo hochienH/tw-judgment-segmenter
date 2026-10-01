@@ -27,8 +27,9 @@ FW = str.maketrans("０１２３４５６７８９", "0123456789")
 
 ENUM_PATTERNS = [  # (style, pattern); the first capture group holds the ordinal token
     ("甲", r"([甲乙丙丁戊己庚辛壬癸])[、．.]"),
-    ("壹", r"([壹貳參叁肆伍陸柒捌玖拾]+)[、．.]"),
-    ("一", r"([一二三四五六七八九十]+)(?:[、．.]|(?=[㈠-㈩⑴-⒇⒈-⒛]|[（(][一二三四五六七八九十0-9０-９]))"),
+    ("壹", r"([壹貳參叁肆伍陸柒捌玖拾]+)[、．.](?![0-9０-９○〇零])"),
+    # an amount is not an enumerator: 一、０００、０００元, 一九八、○○○股
+    ("一", r"([一二三四五六七八九十]+)(?:[、．.](?![0-9０-９○〇零])|(?=[㈠-㈩⑴-⒇⒈-⒛]|[（(][一二三四五六七八九十0-9０-９]))"),
     ("㈠", r"([㈠-㈩])、?|[（(]([一二三四五六七八九十]+)[）)]、?"),
     ("⑴", r"([⑴-⒇])|[（(]([0-9０-９]{1,2})[）)]"),
     ("1.", r"([0-9０-９]{1,2})[、．.](?![0-9０-９])|([⒈-⒛])"),   # ⒈ U+2488 = 1. as one glyph
@@ -37,6 +38,7 @@ ENUM_PATTERNS = [  # (style, pattern); the first capture group holds the ordinal
 ]
 RE_ENUMS = [(st, re.compile(rf"^[\s　]*(?:{p})")) for st, p in ENUM_PATTERNS]
 BODY_LABELS = ("FACTS", "REASONS", "FACTS_REASONS", "BODY_OTHER")
+RE_HEADING_LINE = re.compile(r"^[\s　]*(?:理[\s　]*由|事[\s　]*實|事[\s　]*實[\s　]*及[\s　]*理[\s　]*由|犯[\s　]*罪[\s　]*事[\s　]*實)[\s　]*[：:]?[\s　]*$")
 
 
 def _cn_number(s: str, digits: dict) -> int | None:
@@ -109,6 +111,8 @@ def match_enum(line: str) -> list[tuple[str, int]]:
             continue
         for style, rx in RE_ENUMS:
             m = rx.match(rest)
+            if m and rest[m.end():m.end() + 1] in ("＋", "+"):
+                m = None                            # ㈠＋㈡為… refers to earlier items
             if m:
                 token = next(g for g in m.groups() if g)
                 n = ordinal(style, token)
@@ -173,12 +177,15 @@ def outline(text: str, sections: list[dict]) -> dict:
         if sec["label"] not in BODY_LABELS:
             continue
         stack: list[Level] = []
-        pos, prev_last = sec["start"], ""
+        pos, prev_last = sec["start"], "。"            # a section start counts as a sentence boundary
         for raw in text[sec["start"]:sec["end"]].splitlines(keepends=True):
             line, start = raw.rstrip("\r\n"), pos
             pos += len(raw)
             hits = match_enum(line)
             stripped = line.rstrip(" 　")
+            if not hits and RE_HEADING_LINE.match(line):
+                stack, prev_last = [], "。"             # a second 理由/事實 heading restarts the outline
+                continue
             if not hits:
                 prev_last = stripped[-1:] or prev_last
                 continue
@@ -187,9 +194,12 @@ def outline(text: str, sections: list[dict]) -> dict:
                 after_sentence = j > 0 or prev_last in SENTENCE_END   # a chained 2nd enumerator opens cleanly
                 nested = skipped = duplicate = False
                 # 1. continue an existing level of this style (innermost first) whose indentation matches
+                # (±1 column normally; up to 4 when the previous line finished a sentence, because courts
+                #  indent siblings inconsistently, e.g. ㈠㈢ with two full-width spaces and ㈡ with one)
+                tol = 4 if after_sentence else 1
                 k = next((i for i in range(len(stack) - 1, -1, -1)
                           if stack[i].style == style and n == stack[i].last + 1
-                          and (stack[i].indent is None or abs(stack[i].indent - ind) <= 1 or j > 0)), None)
+                          and (stack[i].indent is None or abs(stack[i].indent - ind) <= tol or j > 0)), None)
                 # 2. tolerate one skipped number, or a number the court repeated (三、 written twice),
                 #    at exactly the same indentation after a finished sentence
                 if k is None and after_sentence:
@@ -202,7 +212,7 @@ def outline(text: str, sections: list[dict]) -> dict:
                             break
                 if k is not None:
                     stack = stack[:k]
-                elif n == 1 or not stack:
+                elif n == 1 or (not stack and after_sentence):
                     # 3. a new list: a fresh style, or a restart of a style in use (quoted items) -> nested child.
                     #    A restart must follow a finished sentence; a wrapped cross reference does not.
                     nested = any(lv.style == style for lv in stack)
