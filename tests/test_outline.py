@@ -1,9 +1,9 @@
 from segmenter import segment
-from segmenter.outline import ordinal, outline
+from segmenter.outline import FULL, SIMPLIFIED_OFF, ordinal, outline
 
 
-def tree(text):
-    r = outline(text, segment(text)["sections"])
+def tree(text, off=None):
+    r = outline(text, segment(text)["sections"], off)
     return [(n["depth"], n["style"], n["ordinal"]) for n in r["nodes"]], r["rejected"]
 
 
@@ -137,8 +137,9 @@ def test_inconsistent_sibling_indentation_after_a_finished_sentence():
 
 
 def test_amounts_and_sums_are_not_enumerators():
+    # rule dropped from the default (ablation 2026-10-02); still tested in the full rule set
     doc = _doc("一、經查：\n㈠甲。\n㈡乙：\n    一、０００、０００元。\n㈢㈠＋㈡為：二、００八元。\n")
-    nodes, _ = tree(doc)
+    nodes, _ = tree(doc, FULL)
     assert nodes == [(0, "一", 1), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3)]
 
 
@@ -148,14 +149,16 @@ def test_wrapped_number_cannot_open_a_section_outline():
 
 
 def test_second_heading_restarts_outline():
+    # rule dropped from the default (ablation 2026-10-02); still tested in the full rule set
     doc = _doc("甲、原告方面：\n乙、被告方面：未到場。\n    理    由\n一、程序方面：\n㈠依約定。\n二、實體方面。\n")
-    assert tree(doc)[0] == [(0, "甲", 1), (0, "甲", 2), (0, "一", 1), (1, "㈠", 1), (0, "一", 2)]
+    assert tree(doc, FULL)[0] == [(0, "甲", 1), (0, "甲", 2), (0, "一", 1), (1, "㈠", 1), (0, "一", 2)]
 
 
 def test_wrapped_list_of_annexes_is_not_a_new_list():
+    # rule dropped from the default (ablation 2026-10-02); still tested in the full rule set
     # a wrapped line is a full line (about 30 characters), unlike a short heading
     doc = _doc("經查上開五家當舖分別對於本件被告提供之借款均如附表\n一、附表二、附表三所示借款人放款。\n")
-    assert tree(doc)[0] == []
+    assert tree(doc, FULL)[0] == []
 
 
 def test_untitled_heading_item_can_open_a_sub_list():
@@ -185,5 +188,12 @@ def test_unclean_opening_is_vouched_for_by_its_sibling_two():
 
 
 def test_chinese_digit_number_lists_are_not_enumerators():
+    # rule dropped from the default (ablation 2026-10-02); still tested in the full rule set
     doc = _doc("一、系爭地號：\n㈠甲段三五○、三五六地號。\n  一、五八二、五八二─一地號。\n㈡乙段。\n")
-    assert [(s, o) for _, s, o in tree(doc)[0]] == [("一", 1), ("㈠", 1), ("㈠", 2)]
+    assert [(s, o) for _, s, o in tree(doc, FULL)[0]] == [("一", 1), ("㈠", 1), ("㈠", 2)]
+
+
+def test_default_outline_is_simplified():
+    assert "clean_open" in SIMPLIFIED_OFF and "amount_guard" not in SIMPLIFIED_OFF and len(SIMPLIFIED_OFF) == 8
+    doc = _doc("一、經查：\n㈠甲。\n㈡乙：\n    一、０００、０００元。\n㈢丙。\n")   # amount_guard is kept
+    assert [(s, o) for _, s, o in tree(doc)[0]] == [("一", 1), ("㈠", 1), ("㈠", 2), ("㈠", 3)]

@@ -175,6 +175,32 @@ The round trip on unedited files gives P = R = 1.0.
 - Lesson: PUA glyphs are invisible, so annotators and agents cannot see them. Both exporters now insert a
   visible hint ⟦U+XXXX⟧ before a line-initial PUA char, and the scorers strip it.
 
+## Ablation and simplified default (2026-10-02, `runs/261002-0017_ablation`)
+
+Every special-case rule got a switch (`segment(text, off=…)`, `outline(text, sections, off=…)`). Each rule was
+switched off alone, then all at once ("core"). Gold = pooled dev sets (layer 1: v1+v2+v3, 131 docs; outline: v1+v2,
+150 docs). "Docs changed" = share of a ~50k sample of the 200k set whose result differs from the full rule set
+(disagreement, not error).
+
+- Layer 1 core: R 0.937, 108/131 exact, 22.4% of docs changed. Rule weights by docs changed:
+  headingless_closing 16.2% (really core), closing_alt 1.4%, transcript 1.3%, statute_relabel 1.3%,
+  bracketed 1.0%, appendix_after_closing 0.7%, merge_repeats 0.6%, inline_repair 0.27%, appendix_inline 0.18%,
+  implicit_reasons 0.08%, date_nian 0.04%, date_spaced 0.04%.
+- Outline core: R 0.886, depth 0.937, 125/150 exact, 8.8% changed. Weights: digit_stop 4.75% (really core),
+  pua 1.45%, duplicate 1.1%, clean_open 1.0% (no gold effect), skip 0.9%, relaxed_indent 0.7%, indent 0.7%,
+  lookahead 0.4%, chained 0.3%, restart_guard 0.2%, amount_guard 0.07%, short_line 0.07%, heading_reset 0.02%,
+  numlist 0.01%, sum 0, chained_indent 0.
+- **Decision (user): the simplified sets are the default.** Layer 1 drops inline_repair, implicit_reasons and
+  appendix_inline: 0.53% of docs differ, gold R 0.982. The outline drops clean_open, short_line, lookahead,
+  numlist_guard, sum_guard, restart_guard, heading_reset and chained_indent (amount_guard is kept): 1.6% of docs
+  differ, gold 145/150. `off=FULL` gives the full sets; tests of dropped rules run with FULL.
+- Known cost: flat 憲法法庭 decisions (no line breaks, 0.25% of docs) are `partial` again. public partial 0.77%,
+  200k 0.9%.
+- Default outputs (simplified): `runs/*_eval-public-v10`, `runs/*_eval-train200k-v10`, `runs/*_outline-train200k-v4`.
+  Dev scores: layer1 v1 R 0.957 (v1 oversampled flat docs), v2 R 1.0, v3 R 0.995, all P 1.0; outline v1 48/50,
+  v2 97/100 docs exact.
+- For a paper: the ablation table itself justifies each kept rule.
+
 ## Open
 
 - Convention (2026-10-01, from held-out file 004): layer 1 marks top-level headings only. Sub-headings inside 理由

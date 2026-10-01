@@ -1,8 +1,9 @@
 from segmenter import segment
+from segmenter.segment import FULL, SIMPLIFIED_OFF
 
 
-def labels(text):
-    return [s["label"] for s in segment(text)["sections"]]
+def labels(text, off=None):
+    return [s["label"] for s in segment(text, off)["sections"]]
 
 
 CRIMINAL = """臺灣臺北地方法院刑事判決
@@ -171,9 +172,10 @@ def test_numbered_heading_inside_reasons_is_not_a_section():
 
 
 def test_reasons_without_heading_start_at_first_level_enumeration():
+    # rule dropped from the default (ablation 2026-10-02); still tested in the full rule set
     doc = "臺灣高等法院臺中分院民事判決\n主　文\n上訴駁回。\n壹、程序方面：\n一、按……\n貳、實體方面：\n中華民國95年1月1日\n"
-    r = segment(doc)
-    assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"] and r["status"] == "ok"
+    r = segment(doc, FULL)
+    assert labels(doc, FULL) == ["HEADER", "MAIN", "REASONS", "CLOSING"] and r["status"] == "ok"
     assert r["sections"][2]["heading"] == "(implicit)"
 
 
@@ -183,20 +185,22 @@ def test_small_claims_judgment_with_only_main_is_main_only():
 
 
 def test_flat_constitutional_court_decision():
+    # rule dropped from the default (ablation 2026-10-02); still tested in the full rule set
     doc = ("憲法法庭裁定111年憲裁字第883號聲請人甲上列聲請人聲請解釋憲法，本庭裁定如下：主文本件不受理。"
            "理由一、聲請人主張略以：爰於中華民國111年1月3日依大審法聲請。二、核與要件不合，應不受理。"
            "中 華 民 國111年8月11日 憲法法庭 審判長大法官 某")
-    r = segment(doc)
-    assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"] and r["status"] == "ok"
+    r = segment(doc, FULL)
+    assert labels(doc, FULL) == ["HEADER", "MAIN", "REASONS", "CLOSING"] and r["status"] == "ok"
     closing = r["sections"][-1]
     assert doc[closing["start"]:].startswith("中 華 民 國111年8月11日 憲法法庭")   # not the date inside the reasons
 
 
 def test_semi_flat_judgment_inline_headings():
+    # rule dropped from the default (ablation 2026-10-02); still tested in the full rule set
     doc = ("臺灣臺中地方法院刑事判決\r\n主　　文\r\n甲犯傷害罪，處有期徒刑陸月。\r\n"
            "壹日。　　犯罪事實一、甲於……\r\n起訴。　　理　　由壹、證據能力部分：\r\n本案……\r\n"
            "到庭執行職務。中　　華　　民　　國　　114 　年　　10　　月　　14　　日　　　刑事第三庭審判長法　官　某")
-    assert labels(doc) == ["HEADER", "MAIN", "FACTS", "REASONS", "CLOSING"]
+    assert labels(doc, FULL) == ["HEADER", "MAIN", "FACTS", "REASONS", "CLOSING"]
 
 
 def test_spaced_numerals_in_date_line():
@@ -211,10 +215,11 @@ def test_inline_words_in_running_text_are_not_headings():
 
 
 def test_flat_reasons_without_enumerator_and_date_after_yu_excluded():
+    # rule dropped from the default (ablation 2026-10-02); still tested in the full rule set
     doc = ("憲法法庭裁定本庭裁定如下：主文本件不受理。理由聲請意旨略以：爰於中華民國111年1月3日依司法院大法官審理案件法聲請。"
            "核與要件不合。中 華 民 國111年8月11日 憲法法庭 審判長大法官 某")
-    r = segment(doc)
-    assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"]
+    r = segment(doc, FULL)
+    assert labels(doc, FULL) == ["HEADER", "MAIN", "REASONS", "CLOSING"]
     assert doc[r["sections"][-1]["start"]:].startswith("中 華 民 國111年8月11日")
 
 
@@ -245,9 +250,10 @@ CLOSING_BLOCK = "中　華　民　國　106　年　8　月　22　日\n　　�
 
 
 def test_appendix_heading_with_statute_on_same_line():
+    # rule dropped from the default (ablation 2026-10-02); still tested in the full rule set
     doc = ("臺灣宜蘭地方法院刑事簡易判決\n主　文\n甲賭博財物。\n事實及理由\n一、……\n" + CLOSING_BLOCK +
            "附錄本案論罪科刑法條全文：刑法第二百六十六條第一項前段\n在公共場所……\n")
-    assert labels(doc)[-1] == "APPENDIX_LAW"
+    assert labels(doc, FULL)[-1] == "APPENDIX_LAW"
 
 
 def test_bracketed_note_with_statutes_is_appendix_law():
@@ -284,3 +290,9 @@ def test_quoted_article_heading_with_paren_note():
     doc = ("臺灣高等法院民事判決\n主　文\n上訴駁回。\n理　由\n一、……\n" + CLOSING_BLOCK +
            "附註：\n民事訴訟法第466條之1（第1項、第2項）：\n對於第二審判決上訴，上訴人應委任律師為訴訟代理人。\n")
     assert labels(doc)[-1] == "APPENDIX_LAW"
+
+
+def test_default_is_simplified():
+    flat = "憲法法庭裁定本庭裁定如下：主文本件不受理。理由一、甲。中 華 民 國111年8月11日 憲法法庭 審判長大法官 某"
+    assert segment(flat)["status"] != "ok" and segment(flat, FULL)["status"] == "ok"
+    assert SIMPLIFIED_OFF == {"inline_repair", "implicit_reasons", "appendix_inline"}
