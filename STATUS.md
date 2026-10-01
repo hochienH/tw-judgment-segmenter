@@ -63,6 +63,12 @@ The round trip on unedited files gives P = R = 1.0.
 
 ## Open
 
+- Convention (2026-10-01, from held-out file 004): layer 1 marks top-level headings only. Sub-headings inside 理由
+  (壹、貳、一、二…) stay REASONS even when they are about facts, e.g. 貳、犯罪事實之認定 (刑訴 310①: evidence and
+  reasons for the facts found belong to 理由). Layer 2 splits REASONS into procedure/admissibility, fact-finding,
+  legal analysis (論罪), sentencing (科刑) and confiscation (沒收), and splits civil FACTS_REASONS into 原告主張 /
+  被告抗辯 / 不爭執事項 / 爭點 / 本院之判斷. Facts-only queries: use FACTS when present, otherwise the layer-2 fact parts.
+
 - ~~判決 `main_only` 4.7% suspicious~~ Resolved on 2026-10-01 (the user's hypothesis): 187 of 190 (98%) are
   小額判決. 民訴 436-18 lets the judgment record only 主文, so `main_only` is correct for them. The other 3 had
   reasons with no heading, starting with 壹、程序方面. They are now handled by an implicit-REASONS rule:
