@@ -266,3 +266,9 @@ def test_table_mentioning_laws_stays_attachment():
     doc = ("臺灣臺北地方法院刑事判決\n主　文\n甲犯如附表所示之罪。\n理　由\n一、……\n" + CLOSING_BLOCK +
            "附表：\n編號一　刑法第339條第1項　有期徒刑三月\n")
     assert labels(doc)[-1] == "ATTACHMENT"
+
+
+def test_note_with_instructions_mentioning_a_law_stays_attachment():
+    doc = ("臺灣臺中地方法院民事裁定\n主　文\n准予公示催告。\n理　由\n一、……\n" + CLOSING_BLOCK +
+           "附記：\n★一、請聲請人收受送達後先行核對上列附表，並依民事訴訟法第五百四十二條規定登報。\n")
+    assert labels(doc)[-1] == "ATTACHMENT"
