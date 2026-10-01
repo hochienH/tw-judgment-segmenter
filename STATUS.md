@@ -54,6 +54,24 @@ as `ok`. Accuracy comes from the gold set below.
   Spaced numerals are allowed in dates.
 - Documents without line breaks: 0.21% of public and 0.25% of the 200k sample, almost all 憲法法庭 2021+.
 
+## Held-out v2: official layer-1 accuracy (2026-10-01)
+
+- 30 docs drawn at random from the 200k training sample, in scope (no 支付命令). Half are 2021-2026; the other
+  half is split evenly over 1996-2005, 2006-2015 and 2016-2020. Sampling is NOT by status. 138 boundaries.
+- Checked by the user and then by 3 Opus agents (10 files each, read-only). The agents found 2 real errors that
+  the user confirmed (019: 「所犯法條：」 statute appendix without 附錄; 029: first closing date 六月廿一日 mis-placed,
+  pre-label anchoring) and 1 ambiguous case (007: a cheque table inside the closing block). Decision on 007:
+  tables inside the closing stay CLOSING (convention (a)).
+- **Score with the v7 rules, BEFORE any fix: boundary P = 0.9927 (136/137), R = 0.9855 (136/138); 2/30 docs
+  with an error.** This is the number to report. With n = 30 the doc-level error rate has a 95% upper bound of
+  about 21%. (`annotation/layer1-v2-heldout-score-v7.json`)
+- After the fixes (v8: 廿/卅 in dates, 右為正本/右正本 closing, standalone 所犯法條/論罪科刑法條 after the closing
+  → APPENDIX_LAW), v1 and v2 both score P = R = 1.0. v2 is now development data.
+- v8 changed 1,609 of the 200k docs: 1,384 gained an APPENDIX_LAW (所犯法條 without 附錄 is common in 簡易判決) and
+  225 had their CLOSING moved. A spot check of 8 was all correct. partial: public 0.55%, 200k 0.64%.
+- Lesson: pre-labels anchor the annotator. Both v2 errors were pre-label errors that the annotator accepted.
+  An independent second reader (agents) caught them.
+
 ## Gold set v1 files
 
 `/nfs/turing/data1/hochien894011/tw-judgment-segmenter/annotation/layer1-v1/`: 51 pre-labelled files
