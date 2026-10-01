@@ -150,3 +150,13 @@ def test_wrapped_number_cannot_open_a_section_outline():
 def test_second_heading_restarts_outline():
     doc = _doc("甲、原告方面：\n乙、被告方面：未到場。\n    理    由\n一、程序方面：\n㈠依約定。\n二、實體方面。\n")
     assert tree(doc)[0] == [(0, "甲", 1), (0, "甲", 2), (0, "一", 1), (1, "㈠", 1), (0, "一", 2)]
+
+
+def test_wrapped_list_of_annexes_is_not_a_new_list():
+    doc = _doc("經查各當舖分別對於本件如附表\n一、附表二、附表三所示借款人放款。\n")
+    assert tree(doc)[0] == []
+
+
+def test_untitled_heading_item_can_open_a_sub_list():
+    doc = _doc("一、本件犯罪事實引用起訴書。\n二、新舊法比較\n  ㈠被告行為後法律修正。\n  ㈡比較結果。\n三、論罪。\n")
+    assert tree(doc)[0] == [(0, "一", 1), (0, "一", 2), (1, "㈠", 1), (1, "㈠", 2), (0, "一", 3)]
