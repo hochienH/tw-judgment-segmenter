@@ -106,3 +106,41 @@ def test_offsets_cover_text_without_gaps():
         secs = segment(doc)["sections"]
         assert secs[0]["start"] == 0 and secs[-1]["end"] == len(doc)
         assert all(a["end"] == b["start"] for a, b in zip(secs, secs[1:]))
+
+
+TRANSCRIPT = """臺灣臺中地方法院刑事簡易庭宣示判決筆錄
+被　　　告　甲
+法官當庭宣示主文如下
+一、主　文
+甲犯竊盜罪，處拘役參拾日。
+二、犯罪事實要旨
+甲於……竊取……
+三、處罰條文
+刑法第320條第1項
+中　華　民　國　112　年　4　月　6　日
+"""
+
+TITLE_WITH_CASE_NO = "臺灣臺北地方法院刑事判決　　110年度訴字第123號\n主　文\n無罪。\n理　由\n……\n中華民國110年5月3日\n"
+
+NO_DATE_ORDER = """臺灣臺北地方法院民事裁定
+主　　文
+本票准予強制執行。
+理　　由
+一、聲請意旨略以……
+以上正本證明與原本無異。
+司法事務官　某
+"""
+
+
+def test_transcript_numbered_headings():
+    assert labels(TRANSCRIPT) == ["HEADER", "MAIN", "FACTS", "BODY_OTHER", "CLOSING"]
+    assert segment(TRANSCRIPT)["doc_kind"] == "宣示判決筆錄"
+
+
+def test_title_followed_by_case_number():
+    assert segment(TITLE_WITH_CASE_NO)["doc_kind"] == "判決"
+
+
+def test_closing_falls_back_to_certified_copy_line():
+    r = segment(NO_DATE_ORDER)
+    assert labels(NO_DATE_ORDER) == ["HEADER", "MAIN", "REASONS", "CLOSING"] and r["status"] == "ok"
