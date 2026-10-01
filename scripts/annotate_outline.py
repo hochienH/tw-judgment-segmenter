@@ -51,6 +51,9 @@ GUIDE = """# 大綱（編號層級）標註說明
   金額或號碼的一部分（「一一九、０００元」）、交叉引用（「如理由欄丙、肆、四、㈠所述」）、
   斷行後剛好出現在行首的數字。
 
+同一行有兩個編號（例如「六㈠…」）時，該行開頭會有兩個前綴：⟦1⟧⟦2⟧六㈠…。
+法院自己寫重複的號碼（例如兩個「三、」）仍算大綱項目，層級與兄弟項相同。
+
 請只做三件事：
 1. 漏標的項目：在該行最前面加 ⟦d⟧
 2. 多標或不算的項目：刪掉該行的 ⟦d⟧
@@ -75,7 +78,8 @@ def export(a) -> None:
         by_depth[min(d, 3)].append(i)
     rng = random.Random(a.seed)
     picked = []
-    for d, k in STRATA.items():
+    strata = dict(map(int, kv.split(":")) for kv in a.strata.split(",")) if a.strata else STRATA
+    for d, k in strata.items():
         picked += [(i, d) for i in rng.sample(sorted(by_depth[d]), k)]
     rng.shuffle(picked)
     texts = load_jsonl(a.texts, keep={i for i, _ in picked})
@@ -85,7 +89,9 @@ def export(a) -> None:
         mf.write("file\tid\tdepth_stratum\tstratum_size\n")
         for n, (i, d) in enumerate(picked, 1):
             text = texts[i]["text"]
-            items = {nd["start"]: f"⟦{nd['depth'] + 1}{'*' if nd['nested_restart'] else ''}⟧" for nd in outl[i]["nodes"]}
+            items = defaultdict(str)                # chained enumerators (六㈠) share a line: ⟦1⟧⟦2⟧六㈠…
+            for nd in sorted(outl[i]["nodes"], key=lambda x: (x["start"], x["depth"])):
+                items[nd["start"]] += f"⟦{nd['depth'] + 1}{'*' if nd['nested_restart'] else ''}⟧"
             l1 = {s["start"]: s["label"] for s in segs[i]["sections"]}
             out, pos = [], 0
             for m in re.finditer(r"[^\n]*\n?", text):
@@ -156,6 +162,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--seed", type=int, default=20261003)
     ap.add_argument("--exclude-manifest", type=Path, nargs="*")
+    ap.add_argument("--strata", help="max depth:count, e.g. 0:10,1:40,2:30,3:20 (3 = 3 or more)")
     a = ap.parse_args()
     export(a) if a.cmd == "export" else score(a)
 
