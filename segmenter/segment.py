@@ -64,7 +64,21 @@ RE_NUM_PREFIX = re.compile(r"^[一二三四五六七八九十]+、")
 RE_IMPLICIT_REASONS = re.compile(rf"^{WS}壹{WS}、")
 
 NUMC = r"[0-9０-９一二三四五六七八九十百零〇]"
-RE_DATE_LINE = re.compile(rf"^{WS}中{WS}華{WS}民{WS}國{WS}{NUMC}+{WS}年{WS}{NUMC}+{WS}月{WS}{NUMC}+{WS}日{WS}$")
+NUMS = rf"(?:{NUMC}{WS})+"                      # numerals may be spaced: 九　十　年
+DATE = rf"中{WS}華{WS}民{WS}國{WS}{NUMS}年{WS}{NUMS}月{WS}{NUMS}日"
+RE_DATE_LINE = re.compile(rf"^{WS}{DATE}{WS}$")
+
+# ---- inline patterns, used only to repair documents whose line breaks were lost --------------
+# (憲法法庭 decisions are one single line; some recent judgments replace breaks with spaces)
+_INLINE_BODY = sorted((w for w, lab in _BODY if lab in ("FACTS", "REASONS", "FACTS_REASONS")), key=len, reverse=True)
+RE_INLINE_MAIN = re.compile(rf"如{WS}下{WS}[：:︰﹕]?{WS}(主{WS}文)")
+# a body heading must follow 。/：/line start and be followed by a colon or an enumerator (一、 壹、),
+# so that "。理由如下" or "。事實上" never match
+RE_INLINE_BODY = re.compile(
+    rf"(?:^|(?<=[。：:︰﹕]))[ \t　]*({'|'.join(_spaced(w) for w in _INLINE_BODY)})"
+    rf"(?={WS}(?:[：:︰﹕]|[一二三四五六七八九十壹貳參肆伍]+{WS}、))", re.M)
+# a closing date must be followed by a court or judge, which excludes dates inside the reasoning
+RE_INLINE_DATE = re.compile(rf"{DATE}(?={WS}[\u4e00-\u9fff]{{0,14}}?(?:法院|法庭|庭|法官|大法官|審判長))")
 
 NUMLAB = r"[0-9０-９一二三四五六七八九十()（）]*"
 RE_APPENDIX_LAW = re.compile(rf"^{WS}附{WS}錄{WS}[^。，\n]{{0,24}}?(?:法{WS}條|條{WS}文|法{WS}規){WS}[^。，\n]{{0,8}}?[：:︰﹕]?{WS}$|^{WS}附{WS}錄{WS}[：:︰﹕]?{WS}$")
@@ -124,6 +138,33 @@ def doc_kind(text: str) -> str:
     return ""
 
 
+def _inline_repair(text: str, events: list, closing_done: bool, seen_body: bool):
+    """Fill in only what the line pass missed, from strict inline patterns."""
+    tail_start = min((o for o, l, _ in events if l in TAIL_LABELS), default=len(text))
+    have = {l for _, l, _ in events}
+    new = []
+    main_off = next((o for o, l, _ in events if l == "MAIN"), None)
+    if main_off is None:
+        m = RE_INLINE_MAIN.search(text, 0, tail_start)
+        if m:
+            main_off = m.start(1)
+            new.append((main_off, "MAIN", "主文"))
+    if not (have & BODY_LABELS) and main_off is not None:
+        stop = min(next((o for o, l, _ in events if l == "CLOSING"), tail_start), tail_start)
+        for m in RE_INLINE_BODY.finditer(text, main_off, stop):
+            word = _squash(m.group(1))
+            new.append((m.start(1), BODY_LABEL[word], word))
+    if not closing_done:
+        after = max((o for o, l, _ in events + new if l == "MAIN" or l in BODY_LABELS), default=None)
+        if after is not None:
+            m = RE_INLINE_DATE.search(text, after, tail_start)
+            if m:
+                new.append((m.start(), "CLOSING", _squash(m.group(0))))
+                closing_done = True
+    seen_body = seen_body or any(l == "MAIN" or l in BODY_LABELS for _, l, _ in new)
+    return sorted(events + new, key=lambda e: e[0]), closing_done, seen_body
+
+
 def segment(text: str) -> dict:
     events: list[tuple[int, str, str]] = []        # (offset, label, heading)
     alt_closing = None                             # 以上正本證明與原本無異 ..., used only if no date line
@@ -171,6 +212,9 @@ def segment(text: str) -> dict:
         if not in_tail and not closing_done and seen_body and RE_CLOSING_ALT.match(line):
             alt_closing = alt_closing if alt_closing is not None else (start, "CLOSING", _squash(line)[:12])
 
+    have = {l for _, l, _ in events}
+    if "MAIN" not in have or not (have & BODY_LABELS) or not closing_done:
+        events, closing_done, seen_body = _inline_repair(text, events, closing_done, seen_body)
     if not closing_done and alt_closing is not None:
         events.append(alt_closing)
         events.sort(key=lambda e: e[0])

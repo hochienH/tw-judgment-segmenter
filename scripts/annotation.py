@@ -68,6 +68,7 @@ def with_markers(text: str, sections: list[dict]) -> str:
     return "".join(out)
 
 
+ALIASES = {"REASON": "REASONS", "FACT": "FACTS", "FACT_REASONS": "FACTS_REASONS", "ATTACHMENTS": "ATTACHMENT"}
 RE_TOKEN = re.compile(r"⟪([A-Z_]+)⟫")
 RE_NOTE_LINE = re.compile(r"^# NOTE:.*\n?", re.M)
 
@@ -132,7 +133,7 @@ def export(args) -> None:
 def score(args) -> None:
     texts, segs = load_jsonl(args.input), load_jsonl(args.segments)
     tp = fp = fn = 0
-    rejected, per_label = [], Counter()
+    rejected, per_label, unknown = [], Counter(), Counter()
     for f in sorted(args.out.glob("*.txt")):
         i = f.stem.split("_", 1)[1]
         with open(f, newline="") as fi:            # no newline translation
@@ -141,13 +142,15 @@ def score(args) -> None:
             rejected.append(f.name)
             continue
         pred = {(s["start"], s["label"]) for s in segs[i]["sections"]}
-        gold = set(gold)
+        gold = {(o, ALIASES.get(l, l)) for o, l in gold}
+        unknown.update(f"{f.name}:{l}" for _, l in gold if l not in LABELS)
         tp, fp, fn = tp + len(pred & gold), fp + len(pred - gold), fn + len(gold - pred)
         per_label.update(f"FN:{l}" for _, l in gold - pred)
         per_label.update(f"FP:{l}" for _, l in pred - gold)
     p, r = tp / max(1, tp + fp), tp / max(1, tp + fn)
     print(json.dumps({"boundary_precision": round(p, 4), "boundary_recall": round(r, 4),
-                      "errors_by_label": dict(per_label.most_common()), "rejected_files": rejected},
+                      "errors_by_label": dict(per_label.most_common()), "rejected_files": rejected,
+                      "unknown_labels": sorted(unknown)},
                      ensure_ascii=False, indent=2))
 
 

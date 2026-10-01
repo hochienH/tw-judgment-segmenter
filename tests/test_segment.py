@@ -180,3 +180,31 @@ def test_reasons_without_heading_start_at_first_level_enumeration():
 def test_small_claims_judgment_with_only_main_is_main_only():
     doc = "臺灣新北地方法院小額民事判決\n111年度板小字第1號\n主　文\n被告應給付原告新臺幣1萬元。\n中華民國111年3月1日\n"
     assert segment(doc)["status"] == "main_only"
+
+
+def test_flat_constitutional_court_decision():
+    doc = ("憲法法庭裁定111年憲裁字第883號聲請人甲上列聲請人聲請解釋憲法，本庭裁定如下：主文本件不受理。"
+           "理由一、聲請人主張略以：爰於中華民國111年1月3日依大審法聲請。二、核與要件不合，應不受理。"
+           "中 華 民 國111年8月11日 憲法法庭 審判長大法官 某")
+    r = segment(doc)
+    assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"] and r["status"] == "ok"
+    closing = r["sections"][-1]
+    assert doc[closing["start"]:].startswith("中 華 民 國111年8月11日 憲法法庭")   # not the date inside the reasons
+
+
+def test_semi_flat_judgment_inline_headings():
+    doc = ("臺灣臺中地方法院刑事判決\r\n主　　文\r\n甲犯傷害罪，處有期徒刑陸月。\r\n"
+           "壹日。　　犯罪事實一、甲於……\r\n起訴。　　理　　由壹、證據能力部分：\r\n本案……\r\n"
+           "到庭執行職務。中　　華　　民　　國　　114 　年　　10　　月　　14　　日　　　刑事第三庭審判長法　官　某")
+    assert labels(doc) == ["HEADER", "MAIN", "FACTS", "REASONS", "CLOSING"]
+
+
+def test_spaced_numerals_in_date_line():
+    doc = "臺灣板橋地方法院刑事判決\n主　文\n無罪。\n理　由\n……\n中      華      民      國      九  十      年      一      月    九    日\n"
+    assert labels(doc)[-1] == "CLOSING"
+
+
+def test_inline_words_in_running_text_are_not_headings():
+    doc = ("臺灣臺北地方法院民事判決\n主　文\n駁回。\n理　由\n一、按……。理由如下：……。事實上，……\n"
+           "中華民國112年1月1日\n")
+    assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"]
