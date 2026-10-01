@@ -183,13 +183,29 @@ def outline(text: str, sections: list[dict]) -> dict:
         if sec["label"] not in BODY_LABELS:
             continue
         stack: list[Level] = []
-        pos, prev_last = sec["start"], "。"            # a section start counts as a sentence boundary
+        prev_last = "。"                                # a section start counts as a sentence boundary
         prev_was_item = False
         prev_len = 0
+        # pre-scan the section so an unclean opening can look ahead for its sibling 2
+        rows, pos = [], sec["start"]
         for raw in text[sec["start"]:sec["end"]].splitlines(keepends=True):
-            line, start = raw.rstrip("\r\n"), pos
+            line = raw.rstrip("\r\n")
+            rows.append((pos, line, match_enum(line)))
             pos += len(raw)
-            hits = match_enum(line)
+
+        def sibling_two_follows(li: int, style: str, ind: int) -> bool:
+            """A real list that opened mid-sentence still has its 2 later: same style, similar indentation,
+            after a finished sentence. A wrapped "一、附表二、…" has no such sibling."""
+            for k in range(li + 1, min(len(rows), li + 80)):
+                _, ln, hs = rows[k]
+                if not hs and is_heading_line(ln):
+                    return False
+                if hs and hs[0] == (style, 2) and abs(indent_of(ln) - ind) <= 4:
+                    before = rows[k - 1][1].rstrip(" 　")
+                    return before[-1:] in SENTENCE_END
+            return False
+
+        for li, (start, line, hits) in enumerate(rows):
             stripped = line.rstrip(" 　")
             if not hits and is_heading_line(line):
                 stack, prev_last, prev_was_item = [], "。", True   # a second 理由/事實 heading restarts the outline
@@ -207,6 +223,8 @@ def outline(text: str, sections: list[dict]) -> dict:
                 # clean_open: may also open a new list right under an item line (an untitled heading such as
                 # 二、新舊法比較). A wrapped line after "…如附表" is neither.
                 clean_open = after_sentence or prev_was_item or 0 < prev_len <= SHORT_LINE
+                if not clean_open and n == 1 and j == 0 and sibling_two_follows(li, style, ind):
+                    clean_open = after_sentence = True      # vouched for by its sibling 2: avoid a cascade
                 nested = skipped = duplicate = False
                 # 1. continue an existing level of this style (innermost first) whose indentation matches
                 # (±1 column normally; up to 4 when the previous line finished a sentence, because courts

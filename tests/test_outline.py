@@ -153,7 +153,8 @@ def test_second_heading_restarts_outline():
 
 
 def test_wrapped_list_of_annexes_is_not_a_new_list():
-    doc = _doc("經查各當舖分別對於本件如附表\n一、附表二、附表三所示借款人放款。\n")
+    # a wrapped line is a full line (about 30 characters), unlike a short heading
+    doc = _doc("經查上開五家當舖分別對於本件被告提供之借款均如附表\n一、附表二、附表三所示借款人放款。\n")
     assert tree(doc)[0] == []
 
 
@@ -174,3 +175,10 @@ def test_list_after_short_untitled_heading_and_rare_colons():
     assert [o for _, _, o in tree(doc)[0]] == [1, 2]
     doc = _doc("一、經查，茲析述證據資料如次︰\n⒈證人甲之證述。\n⒉證人乙之證述。\n")
     assert [o for _, _, o in tree(doc)[0]] == [1, 1, 2]
+
+
+def test_unclean_opening_is_vouched_for_by_its_sibling_two():
+    doc = _doc("一、原告請求之各項損害，經本院審酌兩造之陳述及卷內證據後分述如\n"
+               "        １、醫療費用：支出應扣除非醫療必要部分。\n        ２、增加生活上需要部分：可採。\n"
+               "        ３、慰撫金部分：以三十萬元為適當。\n")
+    assert [(s, o) for _, s, o in tree(doc)[0]] == [("一", 1), ("1.", 1), ("1.", 2), ("1.", 3)]
