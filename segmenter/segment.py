@@ -90,6 +90,14 @@ NUMLAB = r"[0-9０-９一二三四五六七八九十()（）]*"
 RE_APPENDIX_LAW = re.compile(rf"^{WS}附{WS}錄{WS}[^。，\n]{{0,24}}?(?:法{WS}條|條{WS}文|法{WS}規){WS}[^。，\n]{{0,8}}?[：:︰﹕]?{WS}$|^{WS}附{WS}錄{WS}[：:︰﹕]?{WS}$")
 RE_ATTACH = re.compile(rf"^{WS}(?:附{WS}(?:件|表){WS}{NUMLAB}{WS}(?:[：:︰﹕][^\n]{{0,40}})?|附{WS}(?:記|註){WS}(?:[：:︰﹕][^\n]*)?|計{WS}算{WS}書{WS}[：:︰﹕]?){WS}$")
 RE_CLOSING_ALT = re.compile(rf"^{WS}(?:以{WS}上|本{WS}件|右{WS}(?:為{WS})?)?{WS}正{WS}本{WS}(?:證{WS}明{WS}與{WS}原{WS}本{WS}無{WS}異|係{WS}照{WS}原{WS}本{WS}作{WS}成)")
+# heading followed by the statutes on the same line: 附錄本案論罪科刑法條全文：刑法第二百六十六條…
+RE_APPENDIX_LAW_INLINE = re.compile(
+    rf"^{WS}附{WS}錄{WS}[^。，\n]{{0,24}}?(?:法{WS}條|條{WS}文|法{WS}規){WS}(?:全{WS}文)?{WS}[：:︰﹕]")
+RE_BRACKETED = re.compile(r"^([\s　]*)[【〔［\[]([^】〕］\]]{1,12})[】〕］\]]")    # 【附註】 -> 附註
+# convention (a): any statute text appended after the judgment is APPENDIX_LAW, including 附註/附記
+# that quote 民訴 466-1 etc.; 附表/附件 are not relabelled (tables often just mention laws)
+RE_STATUTE_TEXT = re.compile(r"(?:法|條例|通則|規則)第[0-9０-９一二三四五六七八九十百千]+條")
+RELABEL_HEADS = ("附註", "附記", "附錄")
 # after the closing, a standalone 所犯法條 / 論罪科刑法條 heading is the statute appendix (no 附錄 in front)
 RE_APPENDIX_LAW_AFTER_CLOSING = re.compile(rf"^{WS}(?:本{WS}案{WS})?(?:所{WS}犯{WS}法{WS}條|論{WS}罪{WS}科{WS}刑{WS}法{WS}條){WS}(?:全{WS}文)?{WS}[：:︰﹕]?{WS}$")
 RE_INDICTMENT = re.compile(r"起訴書|聲請簡易判決處刑書|聲請簡易判決處刑|追加起訴|犯罪事實|證據並所犯法條")
@@ -183,7 +191,9 @@ def segment(text: str) -> dict:
     seen_body = False
     closing_done = False
     for start, _, line in _lines(text):
-        if RE_APPENDIX_LAW.match(line) or (closing_done and RE_APPENDIX_LAW_AFTER_CLOSING.match(line)):
+        line = RE_BRACKETED.sub(r"\1\2", line)       # same length minus brackets; offsets use `start` only
+        if (RE_APPENDIX_LAW.match(line) or RE_APPENDIX_LAW_INLINE.match(line)
+                or (closing_done and RE_APPENDIX_LAW_AFTER_CLOSING.match(line))):
             events.append((start, "APPENDIX_LAW", _squash(line)))
             in_tail = True
             continue
@@ -248,6 +258,9 @@ def segment(text: str) -> dict:
             sec.subheadings = [h for o, l, h in events if l == "SUB" and off < o < end]
             if lab == "ATTACHMENT" and RE_INDICTMENT.search(_squash(text[off:end][:400]) + "".join(sec.subheadings)):
                 sec.kind = "indictment"
+            elif (lab == "ATTACHMENT" and head.startswith(RELABEL_HEADS)
+                    and RE_STATUTE_TEXT.search(_squash(text[off:end][:300]))):
+                sec.label = "APPENDIX_LAW"
         sections.append(sec)
 
     merged: list[Section] = []                     # 法官當庭宣示主文如下 + 一、主文 -> one MAIN

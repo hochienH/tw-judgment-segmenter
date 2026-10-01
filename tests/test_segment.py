@@ -239,3 +239,30 @@ def test_so_fan_fa_tiao_inside_body_is_not_appendix():
     # in an attached indictment or body, 所犯法條 is a body heading, not the appendix
     doc = "臺灣臺北地方法院刑事簡易判決\n主　文\n甲犯竊盜罪。\n所犯法條\n刑法第320條\n中華民國112年1月1日\n"
     assert "APPENDIX_LAW" not in labels(doc)
+
+
+CLOSING_BLOCK = "中　華　民　國　106　年　8　月　22　日\n　　書記官　某\n"
+
+
+def test_appendix_heading_with_statute_on_same_line():
+    doc = ("臺灣宜蘭地方法院刑事簡易判決\n主　文\n甲賭博財物。\n事實及理由\n一、……\n" + CLOSING_BLOCK +
+           "附錄本案論罪科刑法條全文：刑法第二百六十六條第一項前段\n在公共場所……\n")
+    assert labels(doc)[-1] == "APPENDIX_LAW"
+
+
+def test_bracketed_note_with_statutes_is_appendix_law():
+    doc = ("臺灣高等法院臺南分院民事判決\n主　文\n上訴駁回。\n理　由\n一、……\n" + CLOSING_BLOCK +
+           "【附註】\n民事訴訟法第466條之1：\n⑴對於第二審判決上訴，上訴人應委任律師為訴訟代理人。\n")
+    assert labels(doc)[-1] == "APPENDIX_LAW"
+
+
+def test_note_without_statutes_stays_attachment():
+    doc = ("臺灣臺北地方法院民事判決\n主　文\n駁回。\n理　由\n一、……\n" + CLOSING_BLOCK +
+           "附記：\n本件得於收受送達後二十日內提起上訴。\n")
+    assert labels(doc)[-1] == "ATTACHMENT"
+
+
+def test_table_mentioning_laws_stays_attachment():
+    doc = ("臺灣臺北地方法院刑事判決\n主　文\n甲犯如附表所示之罪。\n理　由\n一、……\n" + CLOSING_BLOCK +
+           "附表：\n編號一　刑法第339條第1項　有期徒刑三月\n")
+    assert labels(doc)[-1] == "ATTACHMENT"
