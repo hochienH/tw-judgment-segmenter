@@ -158,3 +158,13 @@ ONE_PARAGRAPH_ORDER = """臺灣臺北地方法院民事裁定
 def test_one_paragraph_order_is_unstructured_with_closing():
     r = segment(ONE_PARAGRAPH_ORDER)
     assert r["status"] == "unstructured" and labels(ONE_PARAGRAPH_ORDER) == ["HEADER", "CLOSING"]
+
+
+def test_rare_colon_and_variant_heading():
+    doc = "臺灣臺北地方法院民事簡易判決\n主　文\n駁回。\n事實暨理由︰\n一、原告主張……\n中華民國112年1月1日\n"
+    assert labels(doc) == ["HEADER", "MAIN", "FACTS_REASONS", "CLOSING"]
+
+
+def test_numbered_heading_inside_reasons_is_not_a_section():
+    doc = "臺灣臺北地方法院刑事判決\n主　文\n無罪。\n理　由\n一、犯罪事實\n公訴意旨略以……\n中華民國112年1月1日\n"
+    assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"]

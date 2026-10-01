@@ -38,33 +38,36 @@ def _spaced(word: str) -> str:
 
 BODY_HEADINGS = {
     "MAIN": ["主文"],
-    "FACTS_REASONS": ["犯罪事實及理由要領", "犯罪事實及理由", "事實及理由要領", "事實理由及證據", "事實及理由",
-                      "事實與理由", "事實及證據"],
-    "FACTS": ["犯罪事實要旨", "犯罪事實", "事實概要", "事實要領", "事實"],
+    "FACTS_REASONS": ["犯罪事實及理由要領", "犯罪事實及理由", "事實及理由之要領", "事實及理由要領", "事實理由及證據",
+                      "事實及理由", "事實與理由", "事實暨理由", "事實及證據"],
+    "FACTS": ["犯罪事實及證據名稱", "犯罪事實要旨", "犯罪事實", "事實概要", "事實要領", "事實"],
     "REASONS": ["理由要領", "理由"],
     "BODY_OTHER": ["證據並所犯法條", "證據名稱", "所犯法條", "處罰條文", "證據"],
 }
 # longest first, so 事實及理由 wins over 事實
 _BODY = sorted(((w, lab) for lab, ws in BODY_HEADINGS.items() for w in ws), key=lambda x: -len(x[0]))
-RE_BODY = re.compile(rf"^{WS}(?:{'|'.join(_spaced(w) for w, _ in _BODY)}){WS}[：:]?{WS}$")
+RE_BODY = re.compile(rf"^{WS}(?:{'|'.join(_spaced(w) for w, _ in _BODY)}){WS}[：:︰﹕]?{WS}$")
 BODY_LABEL = {w: lab for w, lab in _BODY}
 # 宣示判決筆錄 writes numbered or prefixed headings: 一、主文 / 二、犯罪事實要旨 / 判決事實及理由要領
 TRANSCRIPT_HEADINGS = {
     "主文": "MAIN", "法官當庭宣示主文如下": "MAIN", "宣示主文如下": "MAIN",
     "犯罪事實要旨": "FACTS", "處罰條文": "BODY_OTHER", "證據名稱": "BODY_OTHER", "附記事項": "BODY_OTHER",
     "判決事實及理由要領": "FACTS_REASONS", "事實及理由要領": "FACTS_REASONS", "訴訟標的及理由要領": "FACTS_REASONS",
+    "爭執事項及理由要領": "FACTS_REASONS", "爭執事項理由要領": "FACTS_REASONS", "爭執事項、理由要領": "FACTS_REASONS",
     "理由要領": "REASONS",
+    # numbered top-level headings; accepted only before any body heading (see segment())
+    "犯罪事實": "FACTS", "事實": "FACTS", "理由": "REASONS", "事實及理由": "FACTS_REASONS",
 }
 RE_TRANSCRIPT = re.compile(
-    rf"^{WS}(?:[一二三四五六七八九十]+{WS}、{WS})?(?:{'|'.join(_spaced(w) for w in sorted(TRANSCRIPT_HEADINGS, key=len, reverse=True))}){WS}[：:]?{WS}$")
+    rf"^{WS}(?:[一二三四五六七八九十]+{WS}、{WS})?(?:{'|'.join(_spaced(w) for w in sorted(TRANSCRIPT_HEADINGS, key=len, reverse=True))}){WS}[：:︰﹕]?{WS}$")
 RE_NUM_PREFIX = re.compile(r"^[一二三四五六七八九十]+、")
 
 NUMC = r"[0-9０-９一二三四五六七八九十百零〇]"
 RE_DATE_LINE = re.compile(rf"^{WS}中{WS}華{WS}民{WS}國{WS}{NUMC}+{WS}年{WS}{NUMC}+{WS}月{WS}{NUMC}+{WS}日{WS}$")
 
 NUMLAB = r"[0-9０-９一二三四五六七八九十()（）]*"
-RE_APPENDIX_LAW = re.compile(rf"^{WS}附{WS}錄{WS}[^。，\n]{{0,24}}?(?:法{WS}條|條{WS}文|法{WS}規){WS}[^。，\n]{{0,8}}?[：:]?{WS}$|^{WS}附{WS}錄{WS}[：:]?{WS}$")
-RE_ATTACH = re.compile(rf"^{WS}(?:附{WS}(?:件|表){WS}{NUMLAB}{WS}(?:[：:][^\n]{{0,40}})?|附{WS}(?:記|註){WS}(?:[：:][^\n]*)?|計{WS}算{WS}書{WS}[：:]?){WS}$")
+RE_APPENDIX_LAW = re.compile(rf"^{WS}附{WS}錄{WS}[^。，\n]{{0,24}}?(?:法{WS}條|條{WS}文|法{WS}規){WS}[^。，\n]{{0,8}}?[：:︰﹕]?{WS}$|^{WS}附{WS}錄{WS}[：:︰﹕]?{WS}$")
+RE_ATTACH = re.compile(rf"^{WS}(?:附{WS}(?:件|表){WS}{NUMLAB}{WS}(?:[：:︰﹕][^\n]{{0,40}})?|附{WS}(?:記|註){WS}(?:[：:︰﹕][^\n]*)?|計{WS}算{WS}書{WS}[：:︰﹕]?){WS}$")
 RE_CLOSING_ALT = re.compile(rf"^{WS}(?:以{WS}上|本{WS}件)?{WS}正{WS}本{WS}(?:證{WS}明{WS}與{WS}原{WS}本{WS}無{WS}異|係{WS}照{WS}原{WS}本{WS}作{WS}成)")
 RE_INDICTMENT = re.compile(r"起訴書|聲請簡易判決處刑書|聲請簡易判決處刑|追加起訴|犯罪事實|證據並所犯法條")
 
@@ -99,7 +102,7 @@ def _lines(text: str):
 
 
 def _squash(s: str) -> str:
-    return re.sub(r"[\s　：:]+", "", s)
+    return re.sub(r"[\s　：:︰﹕]+", "", s)
 
 
 def doc_kind(text: str) -> str:
@@ -123,6 +126,8 @@ def doc_kind(text: str) -> str:
 def segment(text: str) -> dict:
     events: list[tuple[int, str, str]] = []        # (offset, label, heading)
     alt_closing = None                             # 以上正本證明與原本無異 ..., used only if no date line
+    seen_inner_body = False                        # a FACTS/REASONS/... heading has been seen
+    kind = doc_kind(text)
     in_tail = False
     seen_body = False
     closing_done = False
@@ -137,6 +142,9 @@ def segment(text: str) -> dict:
             continue
         m = RE_BODY.match(line) or RE_TRANSCRIPT.match(line)
         if m:
+            numbered = bool(RE_NUM_PREFIX.match(_squash(line)))
+            if numbered and seen_inner_body and kind != "宣示判決筆錄":
+                continue                           # "一、犯罪事實" inside the reasons is a sub-item, not a section
             word = RE_NUM_PREFIX.sub("", _squash(line))
             label = BODY_LABEL.get(word) or TRANSCRIPT_HEADINGS.get(word)
             if label is None:
@@ -146,6 +154,7 @@ def segment(text: str) -> dict:
             elif not closing_done:
                 events.append((start, label, word))
                 seen_body = True
+                seen_inner_body = seen_inner_body or label in BODY_LABELS
             continue
         # the closing opens at the first date line after 主文 or a body heading
         if not in_tail and not closing_done and seen_body and RE_DATE_LINE.match(line):
@@ -189,7 +198,6 @@ def segment(text: str) -> dict:
             merged.append(sec)
     sections = merged
     labels = [s.label for s in sections]
-    kind = doc_kind(text)
     missing = [x for x, ok in (("MAIN", "MAIN" in labels),
                                ("BODY", any(l in BODY_LABELS for l in labels)),
                                ("CLOSING", "CLOSING" in labels)) if not ok]
