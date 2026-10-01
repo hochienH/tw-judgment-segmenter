@@ -80,12 +80,14 @@ def with_markers(text: str, sections: list[dict]) -> str:
     for line in _lines(text):
         if pos in starts:
             out.append(f"⟪{starts[pos]}⟫\n")
-        out.append(line)
+        out.append(RE_LINE_PUA.sub(lambda m: f"{m.group(1)}⟦U+{ord(m.group(2)):04X}⟧{m.group(2)}", line))
         pos += len(line)
     return "".join(out)
 
 
 ALIASES = {"REASON": "REASONS", "FACT": "FACTS", "FACT_REASONS": "FACTS_REASONS", "ATTACHMENTS": "ATTACHMENT"}
+RE_HINT = re.compile(r"⟦U\+[0-9A-F]{4}⟧")
+RE_LINE_PUA = re.compile(r"^([ 　\t]*)([\ue000-\uf8ff])", re.M)
 RE_TOKEN = re.compile(r"⟪([A-Z_]+)⟫")
 RE_NOTE_LINE = re.compile(r"^# NOTE:.*\n?", re.M)
 
@@ -96,7 +98,7 @@ def strip_markers(annotated: str) -> tuple[str, list[tuple[int, str]]]:
     A marker alone on its line (as exported) is removed together with its newline. A marker typed inside
     a line (needed for documents without line breaks, e.g. 憲法法庭 decisions) is removed on its own.
     """
-    annotated = RE_NOTE_LINE.sub("", annotated)
+    annotated = RE_HINT.sub("", RE_NOTE_LINE.sub("", annotated))
     out, bounds, last, pos = [], [], 0, 0
     for m in RE_TOKEN.finditer(annotated):
         piece = annotated[last:m.start()]

@@ -28,10 +28,10 @@ FW = str.maketrans("０１２３４５６７８９", "0123456789")
 ENUM_PATTERNS = [  # (style, pattern); the first capture group holds the ordinal token
     ("甲", r"([甲乙丙丁戊己庚辛壬癸])[、．.]"),
     ("壹", r"([壹貳參叁肆伍陸柒捌玖拾]+)[、．.]"),
-    ("一", r"([一二三四五六七八九十]+)[、．.]"),
+    ("一", r"([一二三四五六七八九十]+)(?:[、．.]|(?=[㈠-㈩⑴-⒇⒈-⒛]|[（(][一二三四五六七八九十0-9０-９]))"),
     ("㈠", r"([㈠-㈩])、?|[（(]([一二三四五六七八九十]+)[）)]、?"),
     ("⑴", r"([⑴-⒇])|[（(]([0-9０-９]{1,2})[）)]"),
-    ("1.", r"([0-9０-９]{1,2})[、．.](?![0-9０-９])"),
+    ("1.", r"([0-9０-９]{1,2})[、．.](?![0-9０-９])|([⒈-⒛])"),   # ⒈ U+2488 = 1. as one glyph
     ("①", r"([①-⑳])"),
     ("A", r"([A-Z])[、．.]"),
 ]
@@ -68,21 +68,59 @@ def ordinal(style: str, token: str) -> int | None:
     if style == "①":
         return ord(token) - 0x245F                 # ① U+2460 -> 1
     if style == "1.":
-        return int(token)
+        return ord(token) - 0x2487 if "\u2488" <= token <= "\u249b" else int(token)
     if style == "A":
         return ord(token) - 64
     return None
 
 
-def match_enum(line: str) -> tuple[str, int] | None:
-    for style, rx in RE_ENUMS:
-        m = rx.match(line)
-        if m:
-            token = next(g for g in m.groups() if g)
-            n = ordinal(style, token)
-            if n:
-                return style, n
+# Big5 custom glyphs (造字) in the Private Use Area, used as enumerators. Inferred from runs in the 200k
+# training sample: after the last Unicode glyph of a style (㈩, ⑳ ...) the k-th consecutive PUA item at the
+# same indentation is ordinal 10+k (or 20+k). Codes descend as ordinals rise. F6B0.. are 一、 二、 … with the
+# 、 built in: they follow headings such as 理由 / 事實及理由 as the FIRST item.
+PUA_BLOCKS = [  # (first code, last code, style, ordinal of first code)
+    (0xF6B0, 0xF6A2, "一", 1),     # F6B0 = 一、 … F6A6 = 十一、 … F6A2 = 十五、
+    (0xF674, 0xF65B, "㈠", 11),    # F674 = (十一) … F65B = (三十六)
+    (0xF4DA, 0xF4D7, "⑴", 21),     # F4DA = (21) … F4D7 = (24)
+]
+PUA_SINGLE = {0xE7CB: ("一", 11)}
+
+
+def pua_enum(ch: str) -> tuple[str, int] | None:
+    c = ord(ch)
+    if c in PUA_SINGLE:
+        return PUA_SINGLE[c]
+    for hi, lo, style, first in PUA_BLOCKS:
+        if lo <= c <= hi:
+            return style, first + (hi - c)
     return None
+
+
+def match_enum(line: str) -> list[tuple[str, int]]:
+    """Enumerators at the start of a line, in order. Usually one; 六㈠ or 一、㈠ give two."""
+    out: list[tuple[str, int]] = []
+    rest = line
+    while True:
+        head = rest.lstrip(" 　\t")
+        hit = pua_enum(head[0]) if head else None
+        if hit:
+            out.append(hit)
+            rest = head[1:].lstrip("、．.")
+            continue
+        for style, rx in RE_ENUMS:
+            m = rx.match(rest)
+            if m:
+                token = next(g for g in m.groups() if g)
+                n = ordinal(style, token)
+                if n:
+                    out.append((style, n))
+                    rest = rest[m.end():]
+                    break
+        else:
+            break
+        if len(out) >= 3 or not rest:
+            break
+    return out
 
 
 def indent_of(line: str) -> int:
@@ -116,6 +154,7 @@ class Node:
     indent: int = 0
     nested_restart: bool = False   # a list restarting at 1 in a style already in use (quoted items)
     skipped: bool = False          # accepted although one ordinal was skipped (三 -> 五)
+    duplicate: bool = False        # accepted although the court repeated the number (三、 twice)
 
 
 @dataclass
@@ -123,7 +162,7 @@ class Level:
     style: str
     last: int
     node: int
-    indent: int
+    indent: int | None     # None: opened by a chained enumerator (六㈠); the first sibling sets it
 
 
 def outline(text: str, sections: list[dict]) -> dict:
@@ -138,39 +177,50 @@ def outline(text: str, sections: list[dict]) -> dict:
         for raw in text[sec["start"]:sec["end"]].splitlines(keepends=True):
             line, start = raw.rstrip("\r\n"), pos
             pos += len(raw)
-            hit = match_enum(line)
+            hits = match_enum(line)
             stripped = line.rstrip(" 　")
-            if not hit:
+            if not hits:
                 prev_last = stripped[-1:] or prev_last
                 continue
-            style, n = hit
             ind = indent_of(line)
-            nested = skipped = False
-            # 1. continue an existing level of this style (innermost first) whose indentation matches
-            k = next((i for i in range(len(stack) - 1, -1, -1)
-                      if stack[i].style == style and n == stack[i].last + 1 and abs(stack[i].indent - ind) <= 1), None)
-            # 2. tolerate one skipped number at exactly the same indentation after a finished sentence
-            if k is None and prev_last in SENTENCE_END:
+            for j, (style, n) in enumerate(hits):
+                after_sentence = j > 0 or prev_last in SENTENCE_END   # a chained 2nd enumerator opens cleanly
+                nested = skipped = duplicate = False
+                # 1. continue an existing level of this style (innermost first) whose indentation matches
                 k = next((i for i in range(len(stack) - 1, -1, -1)
-                          if stack[i].style == style and n == stack[i].last + 2 and stack[i].indent == ind), None)
-                skipped = k is not None
-            if k is not None:
-                stack = stack[:k]
-            elif n == 1 or not stack:
-                # 3. a new list: a fresh style, or a restart of a style in use (quoted items) -> nested child
-                nested = any(lv.style == style for lv in stack)
-            else:
-                expected = [lv.last + 1 for lv in stack if lv.style == style]
-                rejected.append({"start": start, "style": style, "ordinal": n, "indent": ind,
-                                 "reason": f"expected {expected[-1]}" if expected else "new level not starting at 1",
-                                 "line": line.strip()[:30]})
-                prev_last = stripped[-1:] or prev_last
-                continue
-            parent = stack[-1].node if stack else -1
-            node = Node(len(nodes), parent, len(stack), style, n, start, sec["end"], sec["label"],
-                        re.sub(r"[\s　]+", "", line)[:20], ind, nested, skipped)
-            nodes.append(node)
-            stack.append(Level(style, n, node.id, ind))
+                          if stack[i].style == style and n == stack[i].last + 1
+                          and (stack[i].indent is None or abs(stack[i].indent - ind) <= 1 or j > 0)), None)
+                # 2. tolerate one skipped number, or a number the court repeated (三、 written twice),
+                #    at exactly the same indentation after a finished sentence
+                if k is None and after_sentence:
+                    for delta, flag in ((2, "skipped"), (0, "duplicate")):
+                        k = next((i for i in range(len(stack) - 1, -1, -1)
+                                  if stack[i].style == style and n == stack[i].last + delta
+                                  and stack[i].indent == ind and n > 1), None)
+                        if k is not None:
+                            skipped, duplicate = flag == "skipped", flag == "duplicate"
+                            break
+                if k is not None:
+                    stack = stack[:k]
+                elif n == 1 or not stack:
+                    # 3. a new list: a fresh style, or a restart of a style in use (quoted items) -> nested child.
+                    #    A restart must follow a finished sentence; a wrapped cross reference does not.
+                    nested = any(lv.style == style for lv in stack)
+                    if nested and not after_sentence:
+                        rejected.append({"start": start, "style": style, "ordinal": n, "indent": ind,
+                                         "reason": "restart inside a sentence", "line": line.strip()[:30]})
+                        break
+                else:
+                    expected = [lv.last + 1 for lv in stack if lv.style == style]
+                    rejected.append({"start": start, "style": style, "ordinal": n, "indent": ind,
+                                     "reason": f"expected {expected[-1]}" if expected else "new level not starting at 1",
+                                     "line": line.strip()[:30]})
+                    break
+                parent = stack[-1].node if stack else -1
+                node = Node(len(nodes), parent, len(stack), style, n, start, sec["end"], sec["label"],
+                            re.sub(r"[\s　]+", "", line)[:20], ind, nested, skipped, duplicate)
+                nodes.append(node)
+                stack.append(Level(style, n, node.id, None if j > 0 else ind))
             prev_last = stripped[-1:] or prev_last
         # close each node at the next node of the same or shallower depth within this section
         sec_nodes = [nd for nd in nodes if nd.section == sec["label"] and sec["start"] <= nd.start < sec["end"]]
