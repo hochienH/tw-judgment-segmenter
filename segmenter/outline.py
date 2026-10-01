@@ -19,26 +19,40 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 
 CN = {c: i for i, c in enumerate("零一二三四五六七八九", 0)}
 CAPS = {c: i + 1 for i, c in enumerate("壹貳參肆伍陸柒捌玖")} | {"叁": 3, "拾": 10}
 STEMS = {c: i + 1 for i, c in enumerate("甲乙丙丁戊己庚辛壬癸")}
 FW = str.maketrans("０１２３４５６７８９", "0123456789")
 
-ENUM_PATTERNS = [  # (style, pattern); the first capture group holds the ordinal token
-    ("甲", r"([甲乙丙丁戊己庚辛壬癸])[、．.]"),
-    ("壹", r"([壹貳參叁肆伍陸柒捌玖拾]+)[、．.](?![0-9０-９○〇零])"),
-    # an amount is not an enumerator: 一、０００、０００元, 一九八、○○○股
-    # ... and neither is a list of numbers in Chinese digits: 一、五八二、五八二─一 (land lot numbers)
-    ("一", r"([一二三四五六七八九十]+)(?:[、．.](?![0-9０-９○〇零])(?![一二三四五六七八九十○〇零]{2,}[、─－\-])"
-           r"|(?=[㈠-㈩⑴-⒇⒈-⒛]|[（(][一二三四五六七八九十0-9０-９]))"),
-    ("㈠", r"([㈠-㈩])、?|[（(]([一二三四五六七八九十]+)[）)]、?"),
-    ("⑴", r"([⑴-⒇])|[（(]([0-9０-９]{1,2})[）)]"),
-    ("1.", r"([0-9０-９]{1,2})[、．.](?![0-9０-９])|([⒈-⒛])"),   # ⒈ U+2488 = 1. as one glyph
-    ("①", r"([①-⑳])"),
-    ("A", r"([A-Z])[、．.]"),
-]
-RE_ENUMS = [(st, re.compile(rf"^[\s　]*(?:{p})")) for st, p in ENUM_PATTERNS]
+# Special-case rules that can be switched off for ablation (outline(text, sections, off={...})).
+OUTLINE_FEATURES = ("amount_guard", "numlist_guard", "chained", "digit_stop", "pua", "sum_guard", "indent",
+                    "relaxed_indent", "skip", "duplicate", "restart_guard", "clean_open", "short_line",
+                    "lookahead", "heading_reset", "chained_indent")
+_ENUM_FLAGS = frozenset({"amount_guard", "numlist_guard", "chained", "digit_stop"})
+
+
+@lru_cache(None)
+def _enum_res(off: frozenset) -> list:
+    amount = r"(?![0-9０-９○〇零])" if "amount_guard" not in off else ""      # 一、０００、０００元, 八、○○○股
+    numlist = r"(?![一二三四五六七八九十○〇零]{2,}[、─－\-])" if "numlist_guard" not in off else ""  # 一、五八二、五八二─一
+    chained = r"|(?=[㈠-㈩⑴-⒇⒈-⒛]|[（(][一二三四五六七八九十0-9０-９])" if "chained" not in off else ""  # 六㈠
+    stop = r"|([⒈-⒛])" if "digit_stop" not in off else ""                # ⒈ U+2488 = 1. as one glyph
+    patterns = [  # (style, pattern); the first non-empty group holds the ordinal token
+        ("甲", r"([甲乙丙丁戊己庚辛壬癸])[、．.]"),
+        ("壹", rf"([壹貳參叁肆伍陸柒捌玖拾]+)[、．.]{amount}"),
+        ("一", rf"([一二三四五六七八九十]+)(?:[、．.]{amount}{numlist}{chained})"),
+        ("㈠", r"([㈠-㈩])、?|[（(]([一二三四五六七八九十]+)[）)]、?"),
+        ("⑴", r"([⑴-⒇])|[（(]([0-9０-９]{1,2})[）)]"),
+        ("1.", rf"([0-9０-９]{{1,2}})[、．.](?![0-9０-９]){stop}"),
+        ("①", r"([①-⑳])"),
+        ("A", r"([A-Z])[、．.]"),
+    ]
+    return [(st, re.compile(rf"^[\s　]*(?:{p})")) for st, p in patterns]
+
+
+RE_ENUMS = _enum_res(frozenset())
 BODY_LABELS = ("FACTS", "REASONS", "FACTS_REASONS", "BODY_OTHER")
 from .segment import RE_BODY as _RE_L1_HEADING, RE_TRANSCRIPT as _RE_L1_TRANSCRIPT  # noqa: E402
 
@@ -105,20 +119,23 @@ def pua_enum(ch: str) -> tuple[str, int] | None:
     return None
 
 
-def match_enum(line: str) -> list[tuple[str, int]]:
+def match_enum(line: str, off: frozenset = frozenset()) -> list[tuple[str, int]]:
     """Enumerators at the start of a line, in order. Usually one; 六㈠ or 一、㈠ give two."""
     out: list[tuple[str, int]] = []
     rest = line
+    enums = _enum_res(off & _ENUM_FLAGS)
     while True:
+        if out and "chained" in off:
+            break
         head = rest.lstrip(" 　\t")
-        hit = pua_enum(head[0]) if head else None
+        hit = pua_enum(head[0]) if head and "pua" not in off else None
         if hit:
             out.append(hit)
             rest = head[1:].lstrip("、．.")
             continue
-        for style, rx in RE_ENUMS:
+        for style, rx in enums:
             m = rx.match(rest)
-            if m and rest[m.end():m.end() + 1] in ("＋", "+"):
+            if m and "sum_guard" not in off and rest[m.end():m.end() + 1] in ("＋", "+"):
                 m = None                            # ㈠＋㈡為… refers to earlier items
             if m:
                 token = next(g for g in m.groups() if g)
@@ -177,8 +194,9 @@ class Level:
     indent: int | None     # None: opened by a chained enumerator (六㈠); the first sibling sets it
 
 
-def outline(text: str, sections: list[dict]) -> dict:
-    """Outline nodes for every body section, plus rejected enumerator-like lines."""
+def outline(text: str, sections: list[dict], off: frozenset = frozenset()) -> dict:
+    """Outline nodes for every body section, plus rejected enumerator-like lines.
+    `off`: names from OUTLINE_FEATURES to switch off (ablation only)."""
     nodes: list[Node] = []
     rejected: list[dict] = []
     for sec in sections:
@@ -192,7 +210,7 @@ def outline(text: str, sections: list[dict]) -> dict:
         rows, pos = [], sec["start"]
         for raw in text[sec["start"]:sec["end"]].splitlines(keepends=True):
             line = raw.rstrip("\r\n")
-            rows.append((pos, line, match_enum(line)))
+            rows.append((pos, line, match_enum(line, off)))
             pos += len(raw)
 
         def sibling_two_follows(li: int, style: str, ind: int) -> bool:
@@ -209,7 +227,7 @@ def outline(text: str, sections: list[dict]) -> dict:
 
         for li, (start, line, hits) in enumerate(rows):
             stripped = line.rstrip(" 　")
-            if not hits and is_heading_line(line):
+            if not hits and "heading_reset" not in off and is_heading_line(line):
                 stack, prev_last, prev_was_item = [], "。", True   # a second 理由/事實 heading restarts the outline
                 continue
             if not hits:
@@ -224,14 +242,17 @@ def outline(text: str, sections: list[dict]) -> dict:
                 after_sentence = j > 0 or prev_last in SENTENCE_END
                 # clean_open: may also open a new list right under an item line (an untitled heading such as
                 # 二、新舊法比較). A wrapped line after "…如附表" is neither.
-                clean_open = after_sentence or prev_was_item or 0 < prev_len <= SHORT_LINE
-                if not clean_open and n == 1 and j == 0 and sibling_two_follows(li, style, ind):
+                clean_open = (after_sentence or prev_was_item or ("short_line" not in off and 0 < prev_len <= SHORT_LINE)
+                              or "clean_open" in off)
+                if not clean_open and "lookahead" not in off and n == 1 and j == 0 and sibling_two_follows(li, style, ind):
                     clean_open = after_sentence = True      # vouched for by its sibling 2: avoid a cascade
                 nested = skipped = duplicate = False
                 # 1. continue an existing level of this style (innermost first) whose indentation matches
                 # (±1 column normally; up to 4 when the previous line finished a sentence, because courts
                 #  indent siblings inconsistently, e.g. ㈠㈢ with two full-width spaces and ㈡ with one)
-                tol = 4 if after_sentence else 1
+                tol = (10 ** 6 if "indent" in off else
+                       4 if after_sentence and "relaxed_indent" not in off else 1)
+                same = (lambda a: True) if "indent" in off else (lambda a: a == ind)
                 k = next((i for i in range(len(stack) - 1, -1, -1)
                           if stack[i].style == style and n == stack[i].last + 1
                           and (stack[i].indent is None or abs(stack[i].indent - ind) <= tol or j > 0)), None)
@@ -239,9 +260,11 @@ def outline(text: str, sections: list[dict]) -> dict:
                 #    at exactly the same indentation after a finished sentence
                 if k is None and after_sentence:
                     for delta, flag in ((2, "skipped"), (0, "duplicate")):
+                        if (flag == "skipped" and "skip" in off) or (flag == "duplicate" and "duplicate" in off):
+                            continue
                         k = next((i for i in range(len(stack) - 1, -1, -1)
                                   if stack[i].style == style and n == stack[i].last + delta
-                                  and stack[i].indent == ind and n > 1), None)
+                                  and same(stack[i].indent) and n > 1), None)
                         if k is not None:
                             skipped, duplicate = flag == "skipped", flag == "duplicate"
                             break
@@ -251,7 +274,7 @@ def outline(text: str, sections: list[dict]) -> dict:
                     # 3. a new list: a fresh style, or a restart of a style in use (quoted items) -> nested child.
                     #    A restart must follow a finished sentence; a wrapped cross reference does not.
                     nested = any(lv.style == style for lv in stack)
-                    if nested and not after_sentence:
+                    if nested and not after_sentence and "restart_guard" not in off:
                         rejected.append({"start": start, "style": style, "ordinal": n, "indent": ind,
                                          "reason": "restart inside a sentence", "line": line.strip()[:30]})
                         break
@@ -266,7 +289,7 @@ def outline(text: str, sections: list[dict]) -> dict:
                 node = Node(len(nodes), parent, len(stack), style, n, start, sec["end"], sec["label"],
                             re.sub(r"[\s　]+", "", line)[:20], ind, nested, skipped, duplicate)
                 nodes.append(node)
-                stack.append(Level(style, n, node.id, None if j > 0 else ind))
+                stack.append(Level(style, n, node.id, None if j > 0 and "chained_indent" not in off else ind))
             prev_last = stripped[-1:] or prev_last
             prev_was_item = any(nd.start == start for nd in nodes[-len(hits):]) if nodes else False
             prev_len = len(stripped.strip(" 　\t"))
