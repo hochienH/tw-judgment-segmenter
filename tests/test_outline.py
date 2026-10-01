@@ -129,3 +129,24 @@ def test_wrapped_cross_reference_restart_is_rejected():
 def test_chained_child_takes_indentation_from_its_first_sibling():
     doc = _doc("五、甲。\n六㈠鄧某因發現上情。\n  ㈡而張某另於同月領取。\n  ㈢張某又於6月領取。\n七、乙。\n")
     assert tree(doc)[0] == [(0, "一", 5), (0, "一", 6), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3), (0, "一", 7)]
+
+
+def test_inconsistent_sibling_indentation_after_a_finished_sentence():
+    doc = _doc("一、甲。\n二、乙。\n三、丙：\n　　㈠子一。\n　㈡子二。\n　　㈢子三。\n　四、綜上。\n")
+    assert tree(doc)[0] == [(0, "一", 1), (0, "一", 2), (0, "一", 3), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3), (0, "一", 4)]
+
+
+def test_amounts_and_sums_are_not_enumerators():
+    doc = _doc("一、經查：\n㈠甲。\n㈡乙：\n    一、０００、０００元。\n㈢㈠＋㈡為：二、００八元。\n")
+    nodes, _ = tree(doc)
+    assert nodes == [(0, "一", 1), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3)]
+
+
+def test_wrapped_number_cannot_open_a_section_outline():
+    doc = _doc("經查曾某各一九\n八、○○○股，以贈與論。\n")
+    assert tree(doc)[0] == []
+
+
+def test_second_heading_restarts_outline():
+    doc = _doc("甲、原告方面：\n乙、被告方面：未到場。\n    理    由\n一、程序方面：\n㈠依約定。\n二、實體方面。\n")
+    assert tree(doc)[0] == [(0, "甲", 1), (0, "甲", 2), (0, "一", 1), (1, "㈠", 1), (0, "一", 2)]
