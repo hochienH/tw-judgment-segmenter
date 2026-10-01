@@ -61,6 +61,7 @@ TRANSCRIPT_HEADINGS = {
 RE_TRANSCRIPT = re.compile(
     rf"^{WS}(?:[一二三四五六七八九十]+{WS}、{WS})?(?:{'|'.join(_spaced(w) for w in sorted(TRANSCRIPT_HEADINGS, key=len, reverse=True))}){WS}[：:︰﹕]?{WS}$")
 RE_NUM_PREFIX = re.compile(r"^[一二三四五六七八九十]+、")
+RE_IMPLICIT_REASONS = re.compile(rf"^{WS}壹{WS}、")
 
 NUMC = r"[0-9０-９一二三四五六七八九十百零〇]"
 RE_DATE_LINE = re.compile(rf"^{WS}中{WS}華{WS}民{WS}國{WS}{NUMC}+{WS}年{WS}{NUMC}+{WS}月{WS}{NUMC}+{WS}日{WS}$")
@@ -156,6 +157,12 @@ def segment(text: str) -> dict:
                 seen_body = True
                 seen_inner_body = seen_inner_body or label in BODY_LABELS
             continue
+        # reasons written without a heading: 主文 is followed directly by 壹、程序方面 / 壹、實體部分 ...
+        if (not in_tail and not closing_done and not seen_inner_body and events and events[-1][1] == "MAIN"
+                and RE_IMPLICIT_REASONS.match(line)):
+            events.append((start, "REASONS", "(implicit)"))
+            seen_inner_body = True
+            continue
         # the closing opens at the first date line after 主文 or a body heading
         if not in_tail and not closing_done and seen_body and RE_DATE_LINE.match(line):
             events.append((start, "CLOSING", _squash(line)))
@@ -207,7 +214,8 @@ def segment(text: str) -> dict:
     elif not missing and order_ok:
         status = "ok"
     elif missing == ["BODY"] and order_ok:
-        status = "main_only"                       # e.g. 更正裁定: 主文 and closing, no reasons by design
+        # legitimate: 小額判決 may record only 主文 (民訴 436-18), 更正裁定 ...
+        status = "main_only"
     elif missing == ["MAIN", "BODY"]:
         status = "unstructured"                    # no headings at all, closing found
     else:
