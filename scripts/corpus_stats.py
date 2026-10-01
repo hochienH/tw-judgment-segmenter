@@ -53,21 +53,27 @@ def structure(sections: list) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", type=Path, required=True)
+    ap.add_argument("--kind", default="", help="only documents of this doc_kind, e.g. 判決 (裁定 never has FACTS)")
+    ap.add_argument("--since", type=int, default=0, help="only archives from this year on")
     a = ap.parse_args()
     docs = defaultdict(Counter)                      # (type, level, period) -> structure counts (documents)
     cases = defaultdict(set)                         # (type, structure) -> distinct case keys
     n_arch = 0
     for done in sorted(a.run.glob("*.done")):
-        n_arch += 1
         year = int(done.stem[:4])
+        if year < a.since:
+            continue
+        n_arch += 1
         with gzip.open(done.with_suffix(".jsonl.gz"), "rt", encoding="utf-8") as f:
             for line in f:
                 r = json.loads(line)
+                if a.kind and r["doc_kind"] != a.kind:
+                    continue
                 folder = r["file"].split("/")[1] if "/" in r["file"] else ""
                 tg, lv, st = type_group(folder), court_level(folder), structure(r["sections"])
                 docs[(tg, lv, period(year))][st] += 1
                 cases[(tg, st)].add(tuple(r["key"]))
-    print(f"archives: {n_arch}")
+    print(f"archives: {n_arch}" + (f", doc_kind={a.kind}" if a.kind else "") + (f", since {a.since}" if a.since else ""))
     print("\n== documents by type: structure shares")
     by_type = defaultdict(Counter)
     for (tg, _, _), c in docs.items():
