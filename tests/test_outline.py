@@ -124,3 +124,8 @@ def test_wrapped_cross_reference_restart_is_rejected():
     doc = _doc("一、經查：\n㈠甲。\n㈡乙，即犯罪事實欄\n    三㈠即如附表所示。\n㈢丙。\n")
     nodes, rejected = tree(doc)
     assert nodes == [(0, "一", 1), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3)]
+
+
+def test_chained_child_takes_indentation_from_its_first_sibling():
+    doc = _doc("五、甲。\n六㈠鄧某因發現上情。\n  ㈡而張某另於同月領取。\n  ㈢張某又於6月領取。\n七、乙。\n")
+    assert tree(doc)[0] == [(0, "一", 5), (0, "一", 6), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3), (0, "一", 7)]

@@ -162,7 +162,7 @@ class Level:
     style: str
     last: int
     node: int
-    indent: int
+    indent: int | None     # None: opened by a chained enumerator (六㈠); the first sibling sets it
 
 
 def outline(text: str, sections: list[dict]) -> dict:
@@ -189,7 +189,7 @@ def outline(text: str, sections: list[dict]) -> dict:
                 # 1. continue an existing level of this style (innermost first) whose indentation matches
                 k = next((i for i in range(len(stack) - 1, -1, -1)
                           if stack[i].style == style and n == stack[i].last + 1
-                          and (abs(stack[i].indent - ind) <= 1 or j > 0)), None)
+                          and (stack[i].indent is None or abs(stack[i].indent - ind) <= 1 or j > 0)), None)
                 # 2. tolerate one skipped number, or a number the court repeated (三、 written twice),
                 #    at exactly the same indentation after a finished sentence
                 if k is None and after_sentence:
@@ -220,7 +220,7 @@ def outline(text: str, sections: list[dict]) -> dict:
                 node = Node(len(nodes), parent, len(stack), style, n, start, sec["end"], sec["label"],
                             re.sub(r"[\s　]+", "", line)[:20], ind, nested, skipped, duplicate)
                 nodes.append(node)
-                stack.append(Level(style, n, node.id, ind))
+                stack.append(Level(style, n, node.id, None if j > 0 else ind))
             prev_last = stripped[-1:] or prev_last
         # close each node at the next node of the same or shallower depth within this section
         sec_nodes = [nd for nd in nodes if nd.section == sec["label"] and sec["start"] <= nd.start < sec["end"]]
