@@ -24,6 +24,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from segmenter import segment  # noqa: E402
 from segmenter.segment import RE_APPENDIX_LAW, RE_ATTACH, RE_BODY, RE_DATE_LINE  # noqa: E402
 
+def doc_id(r: dict) -> str:
+    return r.get("id") or ",".join(str(r[k]) for k in ("court", "jyear", "jcase", "jno"))
+
+
 RE_SHORT = re.compile(r"^[一-鿿、：:（）()0-9０-９]{1,14}$")
 
 
@@ -73,7 +77,7 @@ def main() -> None:
                 if not seg["order_ok"]:
                     missing["ORDER"] += 1
                 misses.update(set(candidate_misses(r["text"])))
-            fout.write(json.dumps({"id": r["id"], **seg}, ensure_ascii=False) + "\n")
+            fout.write(json.dumps({"id": doc_id(r), **seg}, ensure_ascii=False) + "\n")
 
     def rates(c: Counter) -> dict:
         tot = sum(c.values())

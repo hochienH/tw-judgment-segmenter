@@ -48,8 +48,18 @@ GUIDE = """# 第一層分段標註說明
 """
 
 
-def load_jsonl(path: Path) -> dict:
-    return {r["id"]: r for r in map(json.loads, open(path))}
+def doc_id(r: dict) -> str:
+    return r.get("id") or ",".join(str(r[k]) for k in ("court", "jyear", "jcase", "jno"))
+
+
+def load_jsonl(path: Path, keep: set | None = None) -> dict:
+    out = {}
+    for line in open(path):
+        r = json.loads(line)
+        i = doc_id(r)
+        if keep is None or i in keep:
+            out[i] = r
+    return out
 
 
 def _lines(text: str) -> list[str]:
@@ -94,8 +104,38 @@ def strip_markers(annotated: str) -> tuple[str, list[tuple[int, str]]]:
     return "".join(out), bounds
 
 
+HELDOUT_NOTE = """
+**這一批是 held-out，用來估計正確率。** 請逐段確認每一個標記，也檢查有沒有預標漏掉的段落
+（例如沒有預標的結尾日期、附錄、附件）。不要只移動已經有的標記。
+"""
+
+
+def sample_heldout(segs: dict, texts: dict, n: int, recent_share: float, seed: int) -> list[str]:
+    """Random within scope (no formulaic), NOT stratified by status, so accuracy estimates are unbiased
+    within each period; recent years (2021-2026) are oversampled to recent_share."""
+    rng = random.Random(seed)
+    by_period = defaultdict(list)
+    for i, s in segs.items():
+        if s["status"] != "formulaic":
+            by_period[texts[i].get("period", "?")].append(i)
+    recent = "2021-2026"
+    others = sorted(p for p in by_period if p != recent)
+    want = {recent: round(n * recent_share)}
+    for k, p in enumerate(others):
+        want[p] = (n - want[recent]) // len(others) + (1 if k < (n - want[recent]) % len(others) else 0)
+    picked = []
+    for p, w in want.items():
+        picked += rng.sample(sorted(by_period[p]), min(w, len(by_period[p])))
+    rng.shuffle(picked)
+    return picked
+
+
 def export(args) -> None:
-    texts, segs = load_jsonl(args.input), load_jsonl(args.segments)
+    segs = load_jsonl(args.segments)
+    texts = load_jsonl(args.input, keep=set(segs))
+    if args.sample == "heldout":
+        picked = sample_heldout(segs, texts, args.n, args.recent_share, args.seed)
+        return _write(args, picked, segs, texts, GUIDE + HELDOUT_NOTE)
     groups = defaultdict(list)
     for i, s in segs.items():
         if s["status"] == "formulaic":
@@ -117,12 +157,16 @@ def export(args) -> None:
             if seen[k] <= min(seen.values(), default=0):
                 picked.append(i)
                 seen[k] += 1
+    _write(args, picked, segs, texts, GUIDE)
+
+
+def _write(args, picked: list, segs: dict, texts: dict, guide: str) -> None:
     args.out.mkdir(parents=True, exist_ok=False)
-    (args.out / "README.md").write_text(GUIDE)
+    (args.out / "README.md").write_text(guide)
     with open(args.out / "manifest.tsv", "w") as f:
         f.write("file\tid\tdoc_kind\tstatus\ttype_group\tperiod\n")
         for n, i in enumerate(picked, 1):
-            name = f"{n:03d}_{i}.txt"
+            name = f"{n:03d}_{i.replace('/', '_')}.txt"
             with open(args.out / name, "w", newline="") as fo:   # keep \r\n exactly as in the source
                 fo.write(with_markers(texts[i]["text"], segs[i]["sections"]))
             s = segs[i]
@@ -131,11 +175,13 @@ def export(args) -> None:
 
 
 def score(args) -> None:
-    texts, segs = load_jsonl(args.input), load_jsonl(args.segments)
+    segs = load_jsonl(args.segments)
+    manifest = {l.split("\t")[0]: l.split("\t")[1] for l in open(args.out / "manifest.tsv").read().splitlines()[1:]}
+    texts = load_jsonl(args.input, keep=set(manifest.values()))
     tp = fp = fn = 0
     rejected, per_label, unknown = [], Counter(), Counter()
     for f in sorted(args.out.glob("*.txt")):
-        i = f.stem.split("_", 1)[1]
+        i = manifest[f.name]
         with open(f, newline="") as fi:            # no newline translation
             text, gold = strip_markers(fi.read())
         if text != texts[i]["text"]:
@@ -162,6 +208,8 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--n", type=int, default=50)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--sample", choices=["status", "heldout"], default="status")
+    ap.add_argument("--recent-share", type=float, default=0.5)
     args = ap.parse_args()
     export(args) if args.cmd == "export" else score(args)
 
