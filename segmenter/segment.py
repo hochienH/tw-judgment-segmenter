@@ -100,7 +100,9 @@ RE_BRACKETED = re.compile(r"^([\s　]*)[【〔［\[]([^】〕］\]]{1,12})[】�
 # not just be mentioned inside an instruction ("★一、請聲請人…依民事訴訟法第…條…")
 RE_STATUTE_HEAD_LINE = re.compile(
     r"^[\s　]*(?:[一二三四五六七八九十]+[、.]|[⑴⑵⑶]|\(\d+\))?[\s　]*(?:中華民國)?[\u4e00-\u9fff]{1,20}?(?:法|條例|通則|規則)"
-    r"[\s　]*第[\s　]*[0-9０-９一二三四五六七八九十百千]+[\s　]*條", re.M)
+    r"[\s　]*第[\s　]*[0-9０-９一二三四五六七八九十百千]+[\s　]*條(?:之[0-9０-９一二三四五六七八九十]+)?"
+    # a quoted-article heading ends here: only 項/款, a parenthetical note and a colon may follow on the line
+    r"(?:[\s　]*第[\s　]*[0-9０-９一二三四五六七八九十]+[\s　]*[項款])*[\s　]*(?:[（(][^）)\n]{0,24}[）)])?[\s　]*[：:︰﹕]?[\s　]*\r?$", re.M)
 RELABEL_HEADS = ("附註", "附記", "附錄")
 # after the closing, a standalone 所犯法條 / 論罪科刑法條 heading is the statute appendix (no 附錄 in front)
 RE_APPENDIX_LAW_AFTER_CLOSING = re.compile(rf"^{WS}(?:本{WS}案{WS})?(?:所{WS}犯{WS}法{WS}條|論{WS}罪{WS}科{WS}刑{WS}法{WS}條){WS}(?:全{WS}文)?{WS}[：:︰﹕]?{WS}$")

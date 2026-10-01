@@ -272,3 +272,15 @@ def test_note_with_instructions_mentioning_a_law_stays_attachment():
     doc = ("臺灣臺中地方法院民事裁定\n主　文\n准予公示催告。\n理　由\n一、……\n" + CLOSING_BLOCK +
            "附記：\n★一、請聲請人收受送達後先行核對上列附表，並依民事訴訟法第五百四十二條規定登報。\n")
     assert labels(doc)[-1] == "ATTACHMENT"
+
+
+def test_payment_order_note_with_numbered_instructions_stays_attachment():
+    doc = ("臺灣嘉義地方法院民事裁定\n主　文\n准許。\n理　由\n一、……\n" + CLOSING_BLOCK +
+           "附註：\n一、債權人、債務人如於事後遞狀均請註明案號、股別。\n二、債務人依民事訴訟法第五百十八條規定得於二十日內異議。\n")
+    assert labels(doc)[-1] == "ATTACHMENT"
+
+
+def test_quoted_article_heading_with_paren_note():
+    doc = ("臺灣高等法院民事判決\n主　文\n上訴駁回。\n理　由\n一、……\n" + CLOSING_BLOCK +
+           "附註：\n民事訴訟法第466條之1（第1項、第2項）：\n對於第二審判決上訴，上訴人應委任律師為訴訟代理人。\n")
+    assert labels(doc)[-1] == "APPENDIX_LAW"
