@@ -82,3 +82,45 @@ def test_indented_wrapped_line_cannot_continue_top_level():
            "    二、三條規定……\n二、經查……\n中華民國111年1月1日\n")
     nodes, rejected = tree(doc)
     assert nodes == [(0, "一", 1), (0, "一", 2)] and len(rejected) == 1
+
+
+def _doc(body):
+    return "臺灣臺中地方法院刑事判決\n主　文\n無罪。\n理　由\n" + body + "中華民國111年1月1日\n"
+
+
+def test_digit_full_stop_glyphs_and_mixed_ascii():
+    doc = _doc("一、經查：\n㈠甲。\n⒈子一。\n⒉子二。\n㈡乙。\n")
+    assert tree(doc)[0] == [(0, "一", 1), (1, "㈠", 1), (2, "1.", 1), (2, "1.", 2), (1, "㈠", 2)]
+    items = "".join(f"{k}.第{k}項。\n" for k in range(1, 10))                   # 1. … 9. then ⒑ (one glyph)
+    doc = _doc("一、經查：\n" + items + "⒑第十項。\n")
+    nodes = tree(doc)[0]
+    assert [o for _, _, o in nodes] == [1] + list(range(1, 11)) and nodes[-1] == (1, "1.", 10)
+
+
+def test_pua_glyphs_continue_after_unicode_limit():
+    items = "".join(f"{chr(0x321F + k)}第{k}項。\n" for k in range(1, 11))       # ㈠..㈩
+    doc = _doc("一、證據：\n" + items + "第十一項。\n第十二項。\n")
+    nodes = tree(doc)[0]
+    assert nodes[-2:] == [(1, "㈠", 11), (1, "㈠", 12)]
+
+
+def test_pua_yi_block_is_first_level_items():
+    doc = _doc("第一項。\n第二項。\n")
+    assert tree(doc)[0] == [(0, "一", 1), (0, "一", 2)]
+
+
+def test_chained_enumerators_without_comma():
+    doc = _doc("五、甲。\n六㈠鄧某因發現上情。\n㈡又…。\n七、乙。\n")
+    assert tree(doc)[0] == [(0, "一", 5), (0, "一", 6), (1, "㈠", 1), (1, "㈠", 2), (0, "一", 7)]
+
+
+def test_court_repeated_number_is_accepted_as_sibling():
+    doc = _doc("一、甲。\n二、乙。\n三、丙。\n三、丁。\n四、戊。\n")
+    r = outline(doc, segment(doc)["sections"])
+    assert [n["ordinal"] for n in r["nodes"]] == [1, 2, 3, 3, 4] and r["nodes"][3]["duplicate"]
+
+
+def test_wrapped_cross_reference_restart_is_rejected():
+    doc = _doc("一、經查：\n㈠甲。\n㈡乙，即犯罪事實欄\n    三㈠即如附表所示。\n㈢丙。\n")
+    nodes, rejected = tree(doc)
+    assert nodes == [(0, "一", 1), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3)]
