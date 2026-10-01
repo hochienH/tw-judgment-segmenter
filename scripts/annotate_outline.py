@@ -24,6 +24,13 @@ from scripts.annotation import load_jsonl  # noqa: E402
 
 RE_ITEM = re.compile(r"⟦(\d+)\*?⟧")
 RE_L1 = re.compile(r"⟪[A-Z_]+⟫\r?\n")
+# Big5 custom glyphs (PUA) are invisible on screen; a visible hint ⟦U+F6B0⟧ goes in front of a line-initial one
+RE_HINT = re.compile(r"⟦U\+[0-9A-F]{4}⟧")
+RE_LINE_PUA = re.compile(r"^([ 　\t]*)([\ue000-\uf8ff])", re.M)
+
+
+def add_pua_hints(chunk: str) -> str:
+    return RE_LINE_PUA.sub(lambda m: f"{m.group(1)}⟦U+{ord(m.group(2)):04X}⟧{m.group(2)}", chunk)
 STRATA = {0: 5, 1: 20, 2: 15, 3: 10}           # max outline depth (3 = 3 or more) -> number of docs
 
 GUIDE = """# 大綱（編號層級）標註說明
@@ -33,6 +40,9 @@ GUIDE = """# 大綱（編號層級）標註說明
 
 每個大綱項目的行首有前綴 ⟦d⟧，d 是層級，最外層是 1。例：⟦1⟧一、…　⟦2⟧㈠…　⟦3⟧⑴…
 ⟦d*⟧ 表示程式懷疑這是引用文字裡的清單（例如引用條文的一、二、），請特別確認。
+⟦U+F6B0⟧ 這類提示表示後面緊跟一個「看不見」的 Big5 造字（私用區字元），常常是編號：
+  U+F6B0 起依序是 一、二、三…（F6A6 = 十一、），U+F674 起是 (十一)(十二)…，U+F4DA 起是 (21)(22)…。
+  提示本身不用改也不用刪，評分時會自動忽略。
 
 什麼算大綱項目：
 - 算：法院本身用來組織內文的編號，包含子清單；也包含法院整理當事人主張時用的編號
@@ -83,7 +93,7 @@ def export(a) -> None:
                     break
                 if pos in l1:
                     out.append(f"⟪{l1[pos]}⟫\n")
-                out.append(items.get(pos, "") + m.group(0))
+                out.append(items.get(pos, "") + add_pua_hints(m.group(0)))
                 pos += len(m.group(0))
             name = f"{n:03d}_{i.replace('/', '_')}.txt"
             with open(a.out / name, "w", newline="") as fo:
@@ -93,7 +103,7 @@ def export(a) -> None:
 
 
 def strip(annotated: str) -> tuple[str, set]:
-    annotated = RE_L1.sub("", annotated)
+    annotated = RE_HINT.sub("", RE_L1.sub("", annotated))
     out, gold, pos, last = [], set(), 0, 0
     for m in RE_ITEM.finditer(annotated):
         piece = annotated[last:m.start()]
