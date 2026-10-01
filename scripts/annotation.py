@@ -21,7 +21,6 @@ from pathlib import Path
 
 LABELS = ["HEADER", "MAIN", "FACTS", "REASONS", "FACTS_REASONS", "BODY_OTHER", "CLOSING", "APPENDIX_LAW",
           "ATTACHMENT", "UNSTRUCTURED"]
-RE_MARKER = re.compile(r"^⟪([A-Z_]+)⟫$")
 
 GUIDE = """# 第一層分段標註說明
 
@@ -41,6 +40,9 @@ GUIDE = """# 第一層分段標註說明
   APPENDIX_LAW   附錄 論罪科刑法條
   ATTACHMENT     附件／附表／附記／附註／計算書（附在後面的起訴書也是 ATTACHMENT）
   UNSTRUCTURED   沒有任何段落標題的一段式文書主體（例如命補繳裁判費裁定）
+
+沒有換行的文件（例如憲法法庭裁判整篇只有一行）：直接把標記打在行內、該段第一個字前面，
+例如「…本庭裁定如下：⟪MAIN⟫主文本件不受理。⟪REASONS⟫理由一、…」，不需要換行。
 
 不確定的地方，在檔案最後加一行「# NOTE: …」寫下理由即可。
 """
@@ -66,18 +68,30 @@ def with_markers(text: str, sections: list[dict]) -> str:
     return "".join(out)
 
 
+ALIASES = {"REASON": "REASONS", "FACT": "FACTS", "FACT_REASONS": "FACTS_REASONS", "ATTACHMENTS": "ATTACHMENT"}
+RE_TOKEN = re.compile(r"⟪([A-Z_]+)⟫")
+RE_NOTE_LINE = re.compile(r"^# NOTE:.*\n?", re.M)
+
+
 def strip_markers(annotated: str) -> tuple[str, list[tuple[int, str]]]:
-    text, bounds, pos = [], [], 0
-    for line in _lines(annotated):
-        m = RE_MARKER.match(line.rstrip("\r\n"))
-        if m:
-            bounds.append((pos, m.group(1)))
-            continue
-        if line.startswith("# NOTE:"):
-            continue
-        text.append(line)
-        pos += len(line)
-    return "".join(text), bounds
+    """Remove markers and return (original text, [(offset, label)]).
+
+    A marker alone on its line (as exported) is removed together with its newline. A marker typed inside
+    a line (needed for documents without line breaks, e.g. 憲法法庭 decisions) is removed on its own.
+    """
+    annotated = RE_NOTE_LINE.sub("", annotated)
+    out, bounds, last, pos = [], [], 0, 0
+    for m in RE_TOKEN.finditer(annotated):
+        piece = annotated[last:m.start()]
+        out.append(piece)
+        pos += len(piece)
+        bounds.append((pos, m.group(1)))
+        at_line_start = m.start() == 0 or annotated[m.start() - 1] == "\n"
+        # editors may save the marker line with \r\n (matching the source's line endings)
+        eol = 2 if annotated.startswith("\r\n", m.end()) else 1 if annotated.startswith("\n", m.end()) else 0
+        last = m.end() + (eol if at_line_start else 0)
+    out.append(annotated[last:])
+    return "".join(out), bounds
 
 
 def export(args) -> None:
@@ -119,7 +133,7 @@ def export(args) -> None:
 def score(args) -> None:
     texts, segs = load_jsonl(args.input), load_jsonl(args.segments)
     tp = fp = fn = 0
-    rejected, per_label = [], Counter()
+    rejected, per_label, unknown = [], Counter(), Counter()
     for f in sorted(args.out.glob("*.txt")):
         i = f.stem.split("_", 1)[1]
         with open(f, newline="") as fi:            # no newline translation
@@ -128,13 +142,15 @@ def score(args) -> None:
             rejected.append(f.name)
             continue
         pred = {(s["start"], s["label"]) for s in segs[i]["sections"]}
-        gold = set(gold)
+        gold = {(o, ALIASES.get(l, l)) for o, l in gold}
+        unknown.update(f"{f.name}:{l}" for _, l in gold if l not in LABELS)
         tp, fp, fn = tp + len(pred & gold), fp + len(pred - gold), fn + len(gold - pred)
         per_label.update(f"FN:{l}" for _, l in gold - pred)
         per_label.update(f"FP:{l}" for _, l in pred - gold)
     p, r = tp / max(1, tp + fp), tp / max(1, tp + fn)
     print(json.dumps({"boundary_precision": round(p, 4), "boundary_recall": round(r, 4),
-                      "errors_by_label": dict(per_label.most_common()), "rejected_files": rejected},
+                      "errors_by_label": dict(per_label.most_common()), "rejected_files": rejected,
+                      "unknown_labels": sorted(unknown)},
                      ensure_ascii=False, indent=2))
 
 
