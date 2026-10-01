@@ -136,8 +136,10 @@ def score(a) -> None:
             rejected.append(name)
             continue
         pred = {(nd["start"], nd["depth"] + 1) for nd in outl[i]["nodes"]}
-        gp, pp = {o for o, _ in gold}, {o for o, _ in pred}
-        c = Counter(item_tp=len(gp & pp), item_fp=len(pp - gp), item_fn=len(gp - pp),
+        # count items per offset: a chained line (六㈠) holds two items at the same offset
+        gc, pc = Counter(o for o, _ in gold), Counter(o for o, _ in pred)
+        tp = sum((gc & pc).values())
+        c = Counter(item_tp=tp, item_fp=sum(pc.values()) - tp, item_fn=sum(gc.values()) - tp,
                     exact_tp=len(gold & pred), doc=1, doc_exact=int(gold == pred))
         tot.update(c)
         per_stratum[d].update(c)
