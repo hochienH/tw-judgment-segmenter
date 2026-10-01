@@ -167,3 +167,10 @@ def test_first_item_after_long_section_heading():
         doc = ("臺灣臺北地方法院簡易判決\n主　文\n駁回。\n" + heading + "\n一、本件依民事訴訟法第434條。\n"
                "二、其餘。\n中華民國111年1月1日\n")
         assert [o for _, _, o in tree(doc)[0]] == [1, 2], heading
+
+
+def test_list_after_short_untitled_heading_and_rare_colons():
+    doc = _doc("甲：有罪部分\n一、右揭事實，業據被告坦承。\n二、論罪。\n")
+    assert [o for _, _, o in tree(doc)[0]] == [1, 2]
+    doc = _doc("一、經查，茲析述證據資料如次︰\n⒈證人甲之證述。\n⒉證人乙之證述。\n")
+    assert [o for _, _, o in tree(doc)[0]] == [1, 1, 2]

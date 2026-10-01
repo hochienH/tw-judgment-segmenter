@@ -146,7 +146,8 @@ def indent_of(line: str) -> int:
     return n
 
 
-SENTENCE_END = set("。：:；;」』）)！？")
+SENTENCE_END = set("。：:；;」』）)！？︰﹕?")
+SHORT_LINE = 16          # a previous line this short is a heading or a paragraph end, not a wrapped full line
 
 
 @dataclass
@@ -184,6 +185,7 @@ def outline(text: str, sections: list[dict]) -> dict:
         stack: list[Level] = []
         pos, prev_last = sec["start"], "。"            # a section start counts as a sentence boundary
         prev_was_item = False
+        prev_len = 0
         for raw in text[sec["start"]:sec["end"]].splitlines(keepends=True):
             line, start = raw.rstrip("\r\n"), pos
             pos += len(raw)
@@ -195,6 +197,7 @@ def outline(text: str, sections: list[dict]) -> dict:
             if not hits:
                 prev_last = stripped[-1:] or prev_last
                 prev_was_item = False if stripped.strip(" 　") else prev_was_item
+                prev_len = len(stripped.strip(" 　\t")) or prev_len
                 continue
             ind = indent_of(line)
             for j, (style, n) in enumerate(hits):
@@ -203,7 +206,7 @@ def outline(text: str, sections: list[dict]) -> dict:
                 after_sentence = j > 0 or prev_last in SENTENCE_END
                 # clean_open: may also open a new list right under an item line (an untitled heading such as
                 # 二、新舊法比較). A wrapped line after "…如附表" is neither.
-                clean_open = after_sentence or prev_was_item
+                clean_open = after_sentence or prev_was_item or 0 < prev_len <= SHORT_LINE
                 nested = skipped = duplicate = False
                 # 1. continue an existing level of this style (innermost first) whose indentation matches
                 # (±1 column normally; up to 4 when the previous line finished a sentence, because courts
@@ -246,6 +249,7 @@ def outline(text: str, sections: list[dict]) -> dict:
                 stack.append(Level(style, n, node.id, None if j > 0 else ind))
             prev_last = stripped[-1:] or prev_last
             prev_was_item = any(nd.start == start for nd in nodes[-len(hits):]) if nodes else False
+            prev_len = len(stripped.strip(" 　\t"))
         # close each node at the next node of the same or shallower depth within this section
         sec_nodes = [nd for nd in nodes if nd.section == sec["label"] and sec["start"] <= nd.start < sec["end"]]
         for i, nd in enumerate(sec_nodes):
