@@ -60,6 +60,8 @@ def main() -> None:
     ap.add_argument("--part", choices=["l1", "outline"], required=True)
     ap.add_argument("--run-dir", type=Path, required=True)
     ap.add_argument("--every", type=int, default=4, help="population = docs whose id-hash %% every == 0 (~1/every)")
+    ap.add_argument("--variant", action="append", default=[],
+                    help="extra combination NAME=feat1,feat2 (switched off together); with it, only full + these run")
     a = ap.parse_args()
     a.run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -83,6 +85,10 @@ def main() -> None:
 
     features = L1_FEATURES if a.part == "l1" else OUTLINE_FEATURES
     variants = [("full", frozenset())] + [(f"-{f}", frozenset({f})) for f in features] + [("core", frozenset(features))]
+    if a.variant:
+        extra = [(v.split("=")[0], frozenset(x for x in v.split("=")[1].split(",") if x)) for v in a.variant]
+        assert all(f in features for _, off in extra for f in off), "unknown feature"
+        variants = [("full", frozenset())] + extra
     base_secs = {i: segment(texts[i])["sections"] for i in set(pop) | {k[1] for k in gold}}
 
     def run(off: frozenset) -> dict:
@@ -118,7 +124,7 @@ def main() -> None:
             row["gold_depth_acc"] = round(exact_tp / max(1, tp), 4)
         rows.append(row)
         log(json.dumps(row, ensure_ascii=False))
-    (a.run_dir / f"ablation_{a.part}.json").write_text(json.dumps(rows, indent=1, ensure_ascii=False))
+    (a.run_dir / f"ablation_{a.part}{'_combos' if a.variant else ''}.json").write_text(json.dumps(rows, indent=1, ensure_ascii=False))
     log("done")
 
 

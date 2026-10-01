@@ -33,6 +33,11 @@ from functools import lru_cache
 L1_FEATURES = ("transcript", "date_nian", "date_spaced", "closing_alt", "appendix_inline", "appendix_after_closing",
                "bracketed", "statute_relabel", "inline_repair", "implicit_reasons", "headingless_closing",
                "merge_repeats")
+# Default since 2026-10-02 (ablation, runs/261002-0017_ablation): drop the three rules that each touch < 0.3% of
+# documents. inline_repair alone was 4 regexes for 0.27% (flat 憲法法庭 decisions). Cost vs full: 0.53% of docs
+# differ; gold R 0.982. Pass off=FULL for the full rule set.
+FULL = frozenset()
+SIMPLIFIED_OFF = frozenset({"inline_repair", "implicit_reasons", "appendix_inline"})
 
 WS = r"[\s　]*"
 
@@ -202,8 +207,9 @@ def _inline_repair(text: str, events: list, closing_done: bool, seen_body: bool)
     return sorted(events + new, key=lambda e: e[0]), closing_done, seen_body
 
 
-def segment(text: str, off: frozenset = frozenset()) -> dict:
-    """`off`: names from L1_FEATURES to switch off (ablation only)."""
+def segment(text: str, off: frozenset | None = None) -> dict:
+    """`off`: names from L1_FEATURES to switch off; None = SIMPLIFIED_OFF (default), FULL = every rule."""
+    off = SIMPLIFIED_OFF if off is None else off
     date_line = _date_line_re("date_nian" not in off, "date_spaced" not in off)
     events: list[tuple[int, str, str]] = []        # (offset, label, heading)
     alt_closing = None                             # 以上正本證明與原本無異 ..., used only if no date line
