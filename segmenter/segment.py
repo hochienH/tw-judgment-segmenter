@@ -96,7 +96,11 @@ RE_APPENDIX_LAW_INLINE = re.compile(
 RE_BRACKETED = re.compile(r"^([\s　]*)[【〔［\[]([^】〕］\]]{1,12})[】〕］\]]")    # 【附註】 -> 附註
 # convention (a): any statute text appended after the judgment is APPENDIX_LAW, including 附註/附記
 # that quote 民訴 466-1 etc.; 附表/附件 are not relabelled (tables often just mention laws)
-RE_STATUTE_TEXT = re.compile(r"(?:法|條例|通則|規則)第[0-9０-９一二三四五六七八九十百千]+條")
+# the quoted article must head a line ("民事訴訟法第466條之1：", "一、民事訴訟法第436條之24第2項："),
+# not just be mentioned inside an instruction ("★一、請聲請人…依民事訴訟法第…條…")
+RE_STATUTE_HEAD_LINE = re.compile(
+    r"^[\s　]*(?:[一二三四五六七八九十]+[、.]|[⑴⑵⑶]|\(\d+\))?[\s　]*(?:中華民國)?[\u4e00-\u9fff]{1,20}?(?:法|條例|通則|規則)"
+    r"[\s　]*第[\s　]*[0-9０-９一二三四五六七八九十百千]+[\s　]*條", re.M)
 RELABEL_HEADS = ("附註", "附記", "附錄")
 # after the closing, a standalone 所犯法條 / 論罪科刑法條 heading is the statute appendix (no 附錄 in front)
 RE_APPENDIX_LAW_AFTER_CLOSING = re.compile(rf"^{WS}(?:本{WS}案{WS})?(?:所{WS}犯{WS}法{WS}條|論{WS}罪{WS}科{WS}刑{WS}法{WS}條){WS}(?:全{WS}文)?{WS}[：:︰﹕]?{WS}$")
@@ -259,7 +263,7 @@ def segment(text: str) -> dict:
             if lab == "ATTACHMENT" and RE_INDICTMENT.search(_squash(text[off:end][:400]) + "".join(sec.subheadings)):
                 sec.kind = "indictment"
             elif (lab == "ATTACHMENT" and head.startswith(RELABEL_HEADS)
-                    and RE_STATUTE_TEXT.search(_squash(text[off:end][:300]))):
+                    and RE_STATUTE_HEAD_LINE.search(re.sub(r"^[^\n]*?[：:︰﹕]", "", text[off:end][:400], count=1))):
                 sec.label = "APPENDIX_LAW"
         sections.append(sec)
 
