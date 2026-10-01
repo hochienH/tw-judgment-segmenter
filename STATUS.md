@@ -127,7 +127,7 @@ The round trip on unedited files gives P = R = 1.0.
   gold corrections were approved by the user: invisible PUA enumerators that both the agents and the
   annotator missed (040: seven items 一–六、 written as U+F6B0…F6AB plus the depth shift beneath them;
   005 L2691 = (十一)).
-- **Official score, v2 rules vs corrected gold: item P = 0.997, R = 0.864, depth accuracy 0.933; 42/50 docs
+- **Official score, v2 rules vs corrected gold: item P = 0.997, R = 0.862, depth accuracy 0.933; 42/50 docs
   exact (1-level docs 20/20; 2-level 11/15; ≥3-level 6/10). Population-weighted docs exact ≈ 89%.**
   (`annotation/outline-v1-score-v2-corrected.json`)
 - Root causes found (all fixed in v3b):
@@ -143,8 +143,13 @@ The round trip on unedited files gives P = R = 1.0.
      `runs/pua_unmapped_linestart.tsv`.
   5. A restart of a style in use must follow a finished sentence, which rejects wrapped cross-references.
      The level opened by a chained child takes its indentation from its first sibling.
-- Dev score with v3b: P = 0.9986, R = 1.0, depth 1.0. The one FP is ① inside a verbatim quoted meeting record
-  (005), which the rules cannot detect yet.
+- Dev score with v3b: P = 0.9986, R = 1.0, depth 1.0, 49/50 docs exact. The one FP is ① inside a verbatim
+  quoted meeting record (005), which the rules cannot detect yet.
+- Scorer fix: items are counted per offset, because a chained line (六㈠) holds two. The v1 gold was completed
+  for 017 六㈠/七㈠ (⟦1⟧⟦2⟧): the old format could not carry two prefixes on one line. This moved R from 0.864
+  to 0.862.
+- Held-out v2 for v3b: 100 docs (0:10, 1:40, 2:30, ≥3:20), disjoint from all earlier gold sets, reviewed by 10
+  Opus agents (in progress).
 - Lesson: PUA glyphs are invisible, so annotators and agents cannot see them. Both exporters now insert a
   visible hint ⟦U+XXXX⟧ before a line-initial PUA char, and the scorers strip it.
 
