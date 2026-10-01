@@ -77,8 +77,14 @@ RE_INLINE_MAIN = re.compile(rf"如{WS}下{WS}[：:︰﹕]?{WS}(主{WS}文)")
 RE_INLINE_BODY = re.compile(
     rf"(?:^|(?<=[。：:︰﹕]))[ \t　]*({'|'.join(_spaced(w) for w in _INLINE_BODY)})"
     rf"(?={WS}(?:[：:︰﹕]|[一二三四五六七八九十壹貳參肆伍]+{WS}、))", re.M)
-# a closing date must be followed by a court or judge, which excludes dates inside the reasoning
-RE_INLINE_DATE = re.compile(rf"{DATE}(?={WS}[\u4e00-\u9fff]{{0,14}}?(?:法院|法庭|庭|法官|大法官|審判長))")
+# a closing date opens a sentence (after 。 or at line start) and is followed by a court or judge;
+# "爰於中華民國111年1月3日依司法院…" fails both: it follows 於, and 司法院 is not the signing court
+RE_INLINE_DATE = re.compile(
+    rf"(?:^|(?<=。))[ \t　]*({DATE})(?={WS}[\u4e00-\u9fff]{{0,14}}?(?:法院|法庭|庭|法官|大法官|審判長))", re.M)
+# fully flat documents (憲法法庭): "。理由聲請意旨略以…" has no enumerator, so allow any continuation
+# except connectives that make 理由 an ordinary word (理由如下 / 理由為 …)
+RE_INLINE_BODY_FLAT = re.compile(
+    rf"(?:^|(?<=[。：:︰﹕]))[ \t　]*({'|'.join(_spaced(w) for w in _INLINE_BODY)})(?!{WS}[如為是在係何之])", re.M)
 
 NUMLAB = r"[0-9０-９一二三四五六七八九十()（）]*"
 RE_APPENDIX_LAW = re.compile(rf"^{WS}附{WS}錄{WS}[^。，\n]{{0,24}}?(?:法{WS}條|條{WS}文|法{WS}規){WS}[^。，\n]{{0,8}}?[：:︰﹕]?{WS}$|^{WS}附{WS}錄{WS}[：:︰﹕]?{WS}$")
@@ -151,7 +157,8 @@ def _inline_repair(text: str, events: list, closing_done: bool, seen_body: bool)
             new.append((main_off, "MAIN", "主文"))
     if not (have & BODY_LABELS) and main_off is not None:
         stop = min(next((o for o, l, _ in events if l == "CLOSING"), tail_start), tail_start)
-        for m in RE_INLINE_BODY.finditer(text, main_off, stop):
+        flat = text.count("\n") <= 2
+        for m in (RE_INLINE_BODY_FLAT if flat else RE_INLINE_BODY).finditer(text, main_off, stop):
             word = _squash(m.group(1))
             new.append((m.start(1), BODY_LABEL[word], word))
     if not closing_done:
@@ -159,7 +166,7 @@ def _inline_repair(text: str, events: list, closing_done: bool, seen_body: bool)
         if after is not None:
             m = RE_INLINE_DATE.search(text, after, tail_start)
             if m:
-                new.append((m.start(), "CLOSING", _squash(m.group(0))))
+                new.append((m.start(1), "CLOSING", _squash(m.group(1))))
                 closing_done = True
     seen_body = seen_body or any(l == "MAIN" or l in BODY_LABELS for _, l, _ in new)
     return sorted(events + new, key=lambda e: e[0]), closing_done, seen_body

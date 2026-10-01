@@ -208,3 +208,11 @@ def test_inline_words_in_running_text_are_not_headings():
     doc = ("臺灣臺北地方法院民事判決\n主　文\n駁回。\n理　由\n一、按……。理由如下：……。事實上，……\n"
            "中華民國112年1月1日\n")
     assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"]
+
+
+def test_flat_reasons_without_enumerator_and_date_after_yu_excluded():
+    doc = ("憲法法庭裁定本庭裁定如下：主文本件不受理。理由聲請意旨略以：爰於中華民國111年1月3日依司法院大法官審理案件法聲請。"
+           "核與要件不合。中 華 民 國111年8月11日 憲法法庭 審判長大法官 某")
+    r = segment(doc)
+    assert labels(doc) == ["HEADER", "MAIN", "REASONS", "CLOSING"]
+    assert doc[r["sections"][-1]["start"]:].startswith("中 華 民 國111年8月11日")
