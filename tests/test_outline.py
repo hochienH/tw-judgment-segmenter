@@ -129,3 +129,61 @@ def test_wrapped_cross_reference_restart_is_rejected():
 def test_chained_child_takes_indentation_from_its_first_sibling():
     doc = _doc("五、甲。\n六㈠鄧某因發現上情。\n  ㈡而張某另於同月領取。\n  ㈢張某又於6月領取。\n七、乙。\n")
     assert tree(doc)[0] == [(0, "一", 5), (0, "一", 6), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3), (0, "一", 7)]
+
+
+def test_inconsistent_sibling_indentation_after_a_finished_sentence():
+    doc = _doc("一、甲。\n二、乙。\n三、丙：\n　　㈠子一。\n　㈡子二。\n　　㈢子三。\n　四、綜上。\n")
+    assert tree(doc)[0] == [(0, "一", 1), (0, "一", 2), (0, "一", 3), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3), (0, "一", 4)]
+
+
+def test_amounts_and_sums_are_not_enumerators():
+    doc = _doc("一、經查：\n㈠甲。\n㈡乙：\n    一、０００、０００元。\n㈢㈠＋㈡為：二、００八元。\n")
+    nodes, _ = tree(doc)
+    assert nodes == [(0, "一", 1), (1, "㈠", 1), (1, "㈠", 2), (1, "㈠", 3)]
+
+
+def test_wrapped_number_cannot_open_a_section_outline():
+    doc = _doc("經查曾某各一九\n八、○○○股，以贈與論。\n")
+    assert tree(doc)[0] == []
+
+
+def test_second_heading_restarts_outline():
+    doc = _doc("甲、原告方面：\n乙、被告方面：未到場。\n    理    由\n一、程序方面：\n㈠依約定。\n二、實體方面。\n")
+    assert tree(doc)[0] == [(0, "甲", 1), (0, "甲", 2), (0, "一", 1), (1, "㈠", 1), (0, "一", 2)]
+
+
+def test_wrapped_list_of_annexes_is_not_a_new_list():
+    # a wrapped line is a full line (about 30 characters), unlike a short heading
+    doc = _doc("經查上開五家當舖分別對於本件被告提供之借款均如附表\n一、附表二、附表三所示借款人放款。\n")
+    assert tree(doc)[0] == []
+
+
+def test_untitled_heading_item_can_open_a_sub_list():
+    doc = _doc("一、本件犯罪事實引用起訴書。\n二、新舊法比較\n  ㈠被告行為後法律修正。\n  ㈡比較結果。\n三、論罪。\n")
+    assert tree(doc)[0] == [(0, "一", 1), (0, "一", 2), (1, "㈠", 1), (1, "㈠", 2), (0, "一", 3)]
+
+
+def test_first_item_after_long_section_heading():
+    for heading in ("事實及理由要領", "犯 罪 事 實 及 理 由", "事實理由及證據"):
+        doc = ("臺灣臺北地方法院簡易判決\n主　文\n駁回。\n" + heading + "\n一、本件依民事訴訟法第434條。\n"
+               "二、其餘。\n中華民國111年1月1日\n")
+        assert [o for _, _, o in tree(doc)[0]] == [1, 2], heading
+
+
+def test_list_after_short_untitled_heading_and_rare_colons():
+    doc = _doc("甲：有罪部分\n一、右揭事實，業據被告坦承。\n二、論罪。\n")
+    assert [o for _, _, o in tree(doc)[0]] == [1, 2]
+    doc = _doc("一、經查，茲析述證據資料如次︰\n⒈證人甲之證述。\n⒉證人乙之證述。\n")
+    assert [o for _, _, o in tree(doc)[0]] == [1, 1, 2]
+
+
+def test_unclean_opening_is_vouched_for_by_its_sibling_two():
+    doc = _doc("一、原告請求之各項損害，經本院審酌兩造之陳述及卷內證據後分述如\n"
+               "        １、醫療費用：支出應扣除非醫療必要部分。\n        ２、增加生活上需要部分：可採。\n"
+               "        ３、慰撫金部分：以三十萬元為適當。\n")
+    assert [(s, o) for _, s, o in tree(doc)[0]] == [("一", 1), ("1.", 1), ("1.", 2), ("1.", 3)]
+
+
+def test_chinese_digit_number_lists_are_not_enumerators():
+    doc = _doc("一、系爭地號：\n㈠甲段三五○、三五六地號。\n  一、五八二、五八二─一地號。\n㈡乙段。\n")
+    assert [(s, o) for _, s, o in tree(doc)[0]] == [("一", 1), ("㈠", 1), ("㈠", 2)]
