@@ -1,0 +1,10 @@
+# data and outputs never go into the repo
+*.jsonl
+*.sqlite3*
+runs/
+data/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
