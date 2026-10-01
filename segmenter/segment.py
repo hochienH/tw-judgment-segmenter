@@ -27,6 +27,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
+from functools import lru_cache
+
+# Special-case rules that can be switched off for ablation (segment(text, off={...})). All on by default.
+L1_FEATURES = ("transcript", "date_nian", "date_spaced", "closing_alt", "appendix_inline", "appendix_after_closing",
+               "bracketed", "statute_relabel", "inline_repair", "implicit_reasons", "headingless_closing",
+               "merge_repeats")
 
 WS = r"[\s　]*"
 
@@ -67,6 +73,14 @@ NUMC = r"[0-9０-９一二三四五六七八九十百零〇廿卅]"     # 廿 = 
 NUMS = rf"(?:{NUMC}{WS})+"                      # numerals may be spaced: 九　十　年
 DATE = rf"中{WS}華{WS}民{WS}國{WS}{NUMS}年{WS}{NUMS}月{WS}{NUMS}日"
 RE_DATE_LINE = re.compile(rf"^{WS}{DATE}{WS}$")
+
+
+@lru_cache(None)
+def _date_line_re(nian: bool, spaced: bool) -> re.Pattern:
+    """Date-line regex with or without 廿/卅 and with or without spaces between numerals (ablation)."""
+    numc = "[0-9０-９一二三四五六七八九十百零〇" + ("廿卅" if nian else "") + "]"
+    nums = rf"(?:{numc}{WS})+" if spaced else rf"{numc}+{WS}"
+    return re.compile(rf"^{WS}中{WS}華{WS}民{WS}國{WS}{nums}年{WS}{nums}月{WS}{nums}日{WS}$")
 
 # ---- inline patterns, used only to repair documents whose line breaks were lost --------------
 # (憲法法庭 decisions are one single line; some recent judgments replace breaks with spaces)
@@ -188,7 +202,9 @@ def _inline_repair(text: str, events: list, closing_done: bool, seen_body: bool)
     return sorted(events + new, key=lambda e: e[0]), closing_done, seen_body
 
 
-def segment(text: str) -> dict:
+def segment(text: str, off: frozenset = frozenset()) -> dict:
+    """`off`: names from L1_FEATURES to switch off (ablation only)."""
+    date_line = _date_line_re("date_nian" not in off, "date_spaced" not in off)
     events: list[tuple[int, str, str]] = []        # (offset, label, heading)
     alt_closing = None                             # 以上正本證明與原本無異 ..., used only if no date line
     seen_inner_body = False                        # a FACTS/REASONS/... heading has been seen
@@ -197,9 +213,12 @@ def segment(text: str) -> dict:
     seen_body = False
     closing_done = False
     for start, _, line in _lines(text):
-        line = RE_BRACKETED.sub(r"\1\2", line)       # same length minus brackets; offsets use `start` only
-        if (RE_APPENDIX_LAW.match(line) or RE_APPENDIX_LAW_INLINE.match(line)
-                or (closing_done and RE_APPENDIX_LAW_AFTER_CLOSING.match(line))):
+        if "bracketed" not in off:
+            line = RE_BRACKETED.sub(r"\1\2", line)   # same length minus brackets; offsets use `start` only
+        if (RE_APPENDIX_LAW.match(line)
+                or ("appendix_inline" not in off and RE_APPENDIX_LAW_INLINE.match(line))
+                or ("appendix_after_closing" not in off and closing_done
+                    and RE_APPENDIX_LAW_AFTER_CLOSING.match(line))):
             events.append((start, "APPENDIX_LAW", _squash(line)))
             in_tail = True
             continue
@@ -207,7 +226,7 @@ def segment(text: str) -> dict:
             events.append((start, "ATTACHMENT", _squash(line)))
             in_tail = True
             continue
-        m = RE_BODY.match(line) or RE_TRANSCRIPT.match(line)
+        m = RE_BODY.match(line) or ("transcript" not in off and RE_TRANSCRIPT.match(line))
         if m:
             numbered = bool(RE_NUM_PREFIX.match(_squash(line)))
             if numbered and seen_inner_body and kind != "宣示判決筆錄":
@@ -224,31 +243,31 @@ def segment(text: str) -> dict:
                 seen_inner_body = seen_inner_body or label in BODY_LABELS
             continue
         # reasons written without a heading: 主文 is followed directly by 壹、程序方面 / 壹、實體部分 ...
-        if (not in_tail and not closing_done and not seen_inner_body and events and events[-1][1] == "MAIN"
-                and RE_IMPLICIT_REASONS.match(line)):
+        if ("implicit_reasons" not in off and not in_tail and not closing_done and not seen_inner_body
+                and events and events[-1][1] == "MAIN" and RE_IMPLICIT_REASONS.match(line)):
             events.append((start, "REASONS", "(implicit)"))
             seen_inner_body = True
             continue
         # the closing opens at the first date line after 主文 or a body heading
-        if not in_tail and not closing_done and seen_body and RE_DATE_LINE.match(line):
+        if not in_tail and not closing_done and seen_body and date_line.match(line):
             events.append((start, "CLOSING", _squash(line)))
             closing_done = True
             continue
-        if not in_tail and not closing_done and seen_body and RE_CLOSING_ALT.match(line):
+        if "closing_alt" not in off and not in_tail and not closing_done and seen_body and RE_CLOSING_ALT.match(line):
             alt_closing = alt_closing if alt_closing is not None else (start, "CLOSING", _squash(line)[:12])
 
     have = {l for _, l, _ in events}
-    if "MAIN" not in have or not (have & BODY_LABELS) or not closing_done:
+    if "inline_repair" not in off and ("MAIN" not in have or not (have & BODY_LABELS) or not closing_done):
         events, closing_done, seen_body = _inline_repair(text, events, closing_done, seen_body)
     if not closing_done and alt_closing is not None:
         events.append(alt_closing)
         events.sort(key=lambda e: e[0])
         closing_done = True
-    if not seen_body and not closing_done:
+    if "headingless_closing" not in off and not seen_body and not closing_done:
         # one-paragraph orders (命補正, 命補繳裁判費 ... 特此裁定) have no headings at all:
         # still cut the closing at the first date line
         for start, _, line in _lines(text):
-            if start > 0 and RE_DATE_LINE.match(line) and not any(o <= start for o, l, _ in events if l in TAIL_LABELS):
+            if start > 0 and date_line.match(line) and not any(o <= start for o, l, _ in events if l in TAIL_LABELS):
                 events.append((start, "CLOSING", _squash(line)))
                 events.sort(key=lambda e: e[0])
                 break
@@ -257,21 +276,21 @@ def segment(text: str) -> dict:
     if first > 0:
         sections.append(Section("HEADER", 0, first))
     top = [e for e in events if e[1] != "SUB"]
-    for i, (off, lab, head) in enumerate(top):
+    for i, (pos, lab, head) in enumerate(top):
         end = top[i + 1][0] if i + 1 < len(top) else len(text)
-        sec = Section(lab, off, end, head)
+        sec = Section(lab, pos, end, head)
         if lab in TAIL_LABELS:
-            sec.subheadings = [h for o, l, h in events if l == "SUB" and off < o < end]
-            if lab == "ATTACHMENT" and RE_INDICTMENT.search(_squash(text[off:end][:400]) + "".join(sec.subheadings)):
+            sec.subheadings = [h for o, l, h in events if l == "SUB" and pos < o < end]
+            if lab == "ATTACHMENT" and RE_INDICTMENT.search(_squash(text[pos:end][:400]) + "".join(sec.subheadings)):
                 sec.kind = "indictment"
-            elif (lab == "ATTACHMENT" and head.startswith(RELABEL_HEADS)
-                    and RE_STATUTE_HEAD_LINE.search(re.sub(r"^[^\n]*?[：:︰﹕]", "", text[off:end][:400], count=1))):
+            elif ("statute_relabel" not in off and lab == "ATTACHMENT" and head.startswith(RELABEL_HEADS)
+                    and RE_STATUTE_HEAD_LINE.search(re.sub(r"^[^\n]*?[：:︰﹕]", "", text[pos:end][:400], count=1))):
                 sec.label = "APPENDIX_LAW"
         sections.append(sec)
 
     merged: list[Section] = []                     # 法官當庭宣示主文如下 + 一、主文 -> one MAIN
     for sec in sections:
-        if merged and merged[-1].label == sec.label and sec.label not in TAIL_LABELS:
+        if "merge_repeats" not in off and merged and merged[-1].label == sec.label and sec.label not in TAIL_LABELS:
             merged[-1].end = sec.end
         else:
             merged.append(sec)
