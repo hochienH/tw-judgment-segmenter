@@ -210,6 +210,11 @@ def label_nodes(text: str, nodes: list[dict], type_group: str) -> list[dict]:
         parent = by_id.get(nd["parent"]) if nd["parent"] >= 0 else None
         inherited = parent.label if parent is not None else None
         weak = source == "opening" and WEAK_OPENINGS[scheme].match(phrase) is not None
+        # The items under a 爭點 heading are the issues themselves (the user, 2026-10-28), and under 本院之判斷 the
+        # court goes through them issue by issue: a sentence opening like 原告得否…請求 / 被告抗辯… there is not a
+        # party's pleading. Headings still win (a sub-heading 程序方面 under 本院之判斷 stays what it says).
+        if source == "opening" and (inherited == "ISSUES" or (inherited == "COURT_FINDING" and label in ("CLAIM", "DEFENCE"))):
+            weak = True
         if inherited is not None and (label is None or weak):
             label, source = inherited, "inherit"
         if label is None and nd["section"] == "FACTS":

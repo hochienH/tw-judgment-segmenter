@@ -87,3 +87,31 @@ def test_criminal_document():
     assert reasons[0][1] == "heading" and reasons[1][1] == "opening"
     cov = coverage(sections, out)
     assert cov.get("UNLABELLED", 0) == 0
+
+
+ISSUES_DOC = """臺灣臺北地方法院民事判決
+主　文
+原告之訴駁回。
+事實及理由
+一、原告主張：被告應給付借款。
+二、被告則以：並無借款。
+三、兩造不爭執事項：
+㈠被告曾收受10萬元。
+四、本件爭點：
+㈠原告得否依消費借貸之法律關係請求被告返還10萬元？
+㈡被告抗辯該款項為贈與，是否可採？
+五、本院之判斷：
+㈠原告得否依消費借貸之法律關係請求被告返還10萬元？經查，原告未能舉證。
+㈡被告抗辯該款項為贈與，是否可採？查被告所辯與證人證述相符。
+六、綜上所述，原告之請求為無理由。
+中　華　民　國　111　年　3　月　1　日
+"""
+
+
+def test_issue_list_and_per_issue_findings():
+    out, _ = labels(ISSUES_DOC, "民事")
+    seq = [(x["depth"], x["label"]) for x in out]
+    assert seq == [(0, "CLAIM"), (0, "DEFENCE"), (0, "UNDISPUTED"), (1, "UNDISPUTED"),
+                   (0, "ISSUES"), (1, "ISSUES"), (1, "ISSUES"),                     # the issue list, not claims
+                   (0, "COURT_FINDING"), (1, "COURT_FINDING"), (1, "COURT_FINDING"),  # the court issue by issue
+                   (0, "COURT_FINDING")]
